@@ -369,13 +369,45 @@ interface BackupDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putSavings(l: List<SavingsEntry>)
 }
 
+/** Flashcards and spending. */
+@Dao
+interface GrowDao {
+    // Flashcards
+    @Query("SELECT * FROM flashcards WHERE due <= :day ORDER BY due ASC, id ASC") fun dueCards(day: Long): Flow<List<Flashcard>>
+    @Query("SELECT * FROM flashcards WHERE due <= :day ORDER BY due ASC, id ASC") suspend fun dueCardsNow(day: Long): List<Flashcard>
+    @Query("SELECT COUNT(*) FROM flashcards") fun cardCount(): Flow<Int>
+    @Query("SELECT * FROM flashcards ORDER BY createdAt DESC") fun allCards(): Flow<List<Flashcard>>
+    @Query("SELECT COALESCE(MAX(sourceLog), 0) FROM flashcards") suspend fun lastCardSource(): Long
+    @Insert suspend fun insertCards(c: List<Flashcard>)
+    @Update suspend fun updateCard(c: Flashcard)
+    @Delete suspend fun deleteCard(c: Flashcard)
+
+    // Spending
+    @Query("SELECT * FROM expenses WHERE date >= :fromDay ORDER BY ts DESC") fun expensesSince(fromDay: Long): Flow<List<Expense>>
+    @Query("SELECT * FROM expenses WHERE date >= :fromDay ORDER BY ts DESC") suspend fun expensesSinceNow(fromDay: Long): List<Expense>
+    @Query("SELECT MIN(date) FROM expenses") suspend fun firstExpenseDay(): Long?
+    @Insert suspend fun insertExpense(e: Expense): Long
+    @Delete suspend fun deleteExpense(e: Expense)
+
+    // Backup
+    @Query("SELECT * FROM flashcards") suspend fun cardsAll(): List<Flashcard>
+    @Query("SELECT * FROM expenses") suspend fun expensesAll(): List<Expense>
+    @Query("DELETE FROM flashcards") suspend fun wipeCards()
+    @Query("DELETE FROM expenses") suspend fun wipeExpenses()
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putCards(l: List<Flashcard>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putExpenses(l: List<Expense>)
+}
+
 @Database(
     entities = [Quest::class, XpEvent::class, Plan::class, CheckIn::class, FoodEntry::class,
         LogEntry::class, SkillItem::class, ChatMessage::class, Memory::class, DiscoverItem::class,
         WorkoutSet::class, HealthDay::class, BodyEntry::class, WeeklyBoss::class, AchievementUnlock::class,
-        SkillProgress::class, SessionItem::class, GoldEvent::class, Reward::class, SavingsEntry::class],
-    version = 1,
+        SkillProgress::class, SessionItem::class, GoldEvent::class, Reward::class, SavingsEntry::class,
+        Flashcard::class, Expense::class],
+    version = 2,
     exportSchema = true,
+    // v2 only adds tables: Room migrates automatically and keeps all existing data
+    autoMigrations = [androidx.room.AutoMigration(from = 1, to = 2)],
 )
 abstract class AppDb : RoomDatabase() {
     abstract fun game(): GameDao
@@ -383,6 +415,7 @@ abstract class AppDb : RoomDatabase() {
     abstract fun fit(): FitDao
     abstract fun backup(): BackupDao
     abstract fun vault(): VaultDao
+    abstract fun grow(): GrowDao
 
     companion object {
         @Volatile private var instance: AppDb? = null

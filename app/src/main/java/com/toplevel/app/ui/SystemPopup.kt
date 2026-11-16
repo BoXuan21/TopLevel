@@ -80,7 +80,7 @@ private class Spark(val x: Float, val speed: Float, val phase: Float, val r: Flo
 
 private fun Popup.color(): Color = when (kind) {
     Popup.Kind.WARNING -> C.bad
-    Popup.Kind.ACHIEVEMENT, Popup.Kind.LEVEL_UP -> C.shadow
+    Popup.Kind.ACHIEVEMENT, Popup.Kind.LEVEL_UP, Popup.Kind.JOB -> C.shadow
     Popup.Kind.BOSS -> C.bad
     else -> C.accent
 }
@@ -225,7 +225,7 @@ private fun SystemWindow(p: Popup, onDone: () -> Unit) {
                         .background(color.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(if (p.kind == Popup.Kind.LEVEL_UP) "▲" else "!", color = Color.White, fontWeight = FontWeight.Black,
+                    Text(if (p.kind == Popup.Kind.LEVEL_UP || p.kind == Popup.Kind.JOB) "▲" else "!", color = Color.White, fontWeight = FontWeight.Black,
                         fontSize = 17.sp, style = glowStyle(color, 14f))
                 }
                 Spacer(Modifier.width(12.dp))
@@ -242,9 +242,9 @@ private fun SystemWindow(p: Popup, onDone: () -> Unit) {
             )
             Spacer(Modifier.height(16.dp))
 
-            if (p.kind == Popup.Kind.LEVEL_UP) {
-                Text("LEVEL UP", color = Color.White, fontFamily = Fonts.display, fontWeight = FontWeight.Black,
-                    fontSize = 38.sp, letterSpacing = 4.sp, style = glowStyle(color, 30f),
+            if (p.kind == Popup.Kind.LEVEL_UP || p.kind == Popup.Kind.JOB) {
+                Text(if (p.kind == Popup.Kind.JOB) "CLASS CHANGE" else "LEVEL UP", color = Color.White, fontFamily = Fonts.display, fontWeight = FontWeight.Black,
+                    fontSize = if (p.kind == Popup.Kind.JOB) 28.sp else 38.sp, letterSpacing = 4.sp, style = glowStyle(color, 30f),
                     modifier = Modifier.alpha(0.6f + 0.4f * pulse))
                 Spacer(Modifier.height(8.dp))
             }

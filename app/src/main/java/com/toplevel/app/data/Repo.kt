@@ -51,7 +51,9 @@ class Repo private constructor(internal val ctx: Context) {
 
     internal suspend fun award(stat: Stat, amount: Int, reason: String) {
         game.deleteXpByReason(reason)
-        if (amount != 0) game.insertXp(XpEvent(ts = now(), stat = stat, amount = amount, reason = reason))
+        // Stat points: +3% EXP per point put into this stat (gains only, never penalties)
+        val boosted = if (amount > 0) Growth.boost(amount, prefs.points(stat)) else amount
+        if (boosted != 0) game.insertXp(XpEvent(ts = now(), stat = stat, amount = boosted, reason = reason))
     }
 
     internal suspend fun revoke(reason: String) = game.deleteXpByReason(reason)
@@ -412,6 +414,11 @@ Return {"videos":[{"title":"...","channel":"...","why":"one short line","query":
                 mapOf("name" to ("string" to "Reward"), "price_eur" to ("number" to "Price in €"),
                     "condition" to ("string" to "Optional: level:N, ach:<id>, or cali:<planche|frontlever|backlever|handstand|muscleup|hspu>:<stage index 0-5>")),
                 listOf("name", "price_eur")),
+            Claude.tool("log_expense", "Record money the user spent (not savings).",
+                mapOf("amount_eur" to ("number" to "Amount in €"),
+                    "category" to ("string" to "One of: ${Growth.categories.joinToString()}"),
+                    "note" to ("string" to "What it was")),
+                listOf("amount_eur", "category")),
             Claude.tool("log_savings", "Record money the user moved to savings, or a purchase they skipped.",
                 mapOf("amount_eur" to ("number" to "Amount in €"), "note" to ("string" to "What for / what they skipped")),
                 listOf("amount_eur")),
@@ -486,6 +493,12 @@ Return {"videos":[{"title":"...","channel":"...","why":"one short line","query":
                 val price = str(input, "price_eur")?.toFloatOrNull() ?: 0f
                 addReward(str(input, "name") ?: "Reward", price, condition = str(input, "condition").orEmpty())
                 "✓ Reward added: ${str(input, "name")} (€${"%.0f".format(price)}, ${defaultGoldCost(price)} Gold)"
+            }
+            "log_expense" -> {
+                val a = str(input, "amount_eur")?.toFloatOrNull() ?: throw IllegalArgumentException("amount")
+                val cat = str(input, "category")?.let { c -> Growth.categories.firstOrNull { it.equals(c, true) } } ?: "Other"
+                addExpense(a, cat, str(input, "note").orEmpty())
+                "✓ Spent €${"%.2f".format(a)} ($cat)"
             }
             "log_savings" -> {
                 val a = str(input, "amount_eur")?.toFloatOrNull() ?: 0f
@@ -711,6 +724,11 @@ ${buildContext()}"""
         }
         sb.append("\n## Money\nGold: ${v.goldBalanceNow()}. Savings pot: €${"%.0f".format(v.potNow())}. " +
             "Saved this month: €${"%.0f".format(v.depositedSinceNow(monthStart()))} of €${prefs.savingsGoal} goal.\n")
+        db.grow().expensesSinceNow(monthStart()).takeIf { it.isNotEmpty() }?.let { ex ->
+            sb.append("Spent this month: €${"%.0f".format(ex.sumOf { it.amountEur.toDouble() })} (" +
+                ex.groupBy { it.category }.entries.joinToString { "${it.key} €${"%.0f".format(it.value.sumOf { e -> e.amountEur.toDouble() })}" } +
+                (if (prefs.monthBudget > 0) "; budget €${prefs.monthBudget}" else "") + ")\n")
+        }
         val rewards = v.rewardsNow().filter { it.redeemedAt == null }
         if (rewards.isNotEmpty()) {
             sb.append("Rewards being earned: ")

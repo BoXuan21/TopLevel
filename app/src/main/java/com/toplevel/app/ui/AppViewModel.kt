@@ -54,6 +54,34 @@ import com.toplevel.app.health.HealthSync
 import com.toplevel.app.work.Focus
 import com.toplevel.app.work.Scheduler
 import com.toplevel.app.data.AdviceCodec
+import com.toplevel.app.data.Dungeon
+import com.toplevel.app.data.Expense
+import com.toplevel.app.data.Flashcard
+import com.toplevel.app.data.Growth
+import com.toplevel.app.data.JobDef
+import com.toplevel.app.data.JobState
+import com.toplevel.app.data.StepProgress
+import com.toplevel.app.data.WeekNumbers
+import com.toplevel.app.data.abandonJob
+import com.toplevel.app.data.activeDungeon
+import com.toplevel.app.data.addCard
+import com.toplevel.app.data.addExpense
+import com.toplevel.app.data.cachedReview
+import com.toplevel.app.data.checkJobComplete
+import com.toplevel.app.data.clearDungeon
+import com.toplevel.app.data.customJob
+import com.toplevel.app.data.enterDungeon
+import com.toplevel.app.data.generateCards
+import com.toplevel.app.data.jobProgress
+import com.toplevel.app.data.jobState
+import com.toplevel.app.data.noSpendStreak
+import com.toplevel.app.data.quitDungeon
+import com.toplevel.app.data.reviewCard
+import com.toplevel.app.data.rewardNoSpend
+import com.toplevel.app.data.startJob
+import com.toplevel.app.data.toggleJobStep
+import com.toplevel.app.data.weekNumbers
+import com.toplevel.app.data.weeklyChanges
 import com.toplevel.app.data.FoodScan
 import com.toplevel.app.data.Popup
 import com.toplevel.app.data.Product
@@ -156,6 +184,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         refreshCalendar()
         loadRecentFoods()
         water = prefs.water(day)
+        growthOnStart()
         focusEnd = prefs.focusEnd
         viewModelScope.launch(Dispatchers.IO) {
             healthConnected = HealthSync.granted(getApplication())
@@ -358,6 +387,101 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         onStart()
     }
     fun restartWizard() { prefs.wizardDone = false; wizardDone = false }
+
+    // ───────── Growth features ─────────
+
+    /** Opened from the food widget: start the barcode camera. */
+    var pendingScan by mutableStateOf(false)
+
+    // Stat points (bumped to redraw after spending)
+    var pointsVersion by mutableIntStateOf(0)
+        private set
+    fun unspentPoints(level: Int) = Growth.pointsEarned(level) - prefs.pointsSpent()
+    fun spendPoint(stat: Stat, level: Int) {
+        if (unspentPoints(level) <= 0) return
+        prefs.setPoints(stat, prefs.points(stat) + 1); pointsVersion++
+    }
+
+    // Themes
+    fun setTheme(id: String) { prefs.theme = id; C.applyTheme(id) }
+
+    // Job change
+    var job by mutableStateOf<JobState?>(null)
+        private set
+    var jobProgress by mutableStateOf<List<StepProgress>>(emptyList())
+        private set
+    fun refreshJob() = viewModelScope.launch(Dispatchers.IO) {
+        if (repo.checkJobComplete()) C.applyTheme(prefs.theme)
+        job = repo.jobState(); jobProgress = repo.jobProgress()
+        activeTitle = prefs.activeTitle
+    }
+    fun startJob(d: JobDef) { repo.startJob(d); refreshJob() }
+    fun abandonJob() { repo.abandonJob(); refreshJob() }
+    fun toggleJobStep(i: Int) = io { repo.toggleJobStep(i); refreshJob() }
+    fun customJob(goal: String) = run("Designing your class…") { repo.startJob(repo.customJob(goal)); refreshJob(); null }
+
+    // Dungeons
+    var dungeon by mutableStateOf(repo.activeDungeon())
+        private set
+    fun enterDungeon(d: Dungeon) {
+        val a = repo.enterDungeon(d)
+        com.toplevel.app.work.DungeonTimer.start(getApplication(), a.start, d.minutes)
+        dungeon = a
+    }
+    fun clearDungeon() = io { if (repo.clearDungeon()) dungeon = null; refreshJob() }
+    fun quitDungeon() = io {
+        repo.quitDungeon(); dungeon = null
+        com.toplevel.app.work.DungeonTimer.cancel(getApplication())
+    }
+
+    // Flashcards
+    val dueCards = repo.db.grow().dueCards(day)
+    val cardCount = repo.db.grow().cardCount()
+    fun makeCards(force: Boolean = true) = run("Making flashcards from what you learned…") {
+        val n = repo.generateCards(force)
+        message = if (n > 0) "$n new flashcards" else "No new learnings to turn into cards yet"
+        null
+    }
+    fun reviewCard(c: Flashcard, grade: Int) = io { repo.reviewCard(c, grade) }
+    fun addCard(front: String, back: String) = io { repo.addCard(front, back) }
+
+    // Spending
+    val expensesMonth = repo.db.grow().expensesSince(repo.monthStart())
+    var noSpend by mutableIntStateOf(0)
+        private set
+    var budgetsVersion by mutableIntStateOf(0)
+        private set
+    fun addExpense(amount: Float, cat: String, note: String) = io { repo.addExpense(amount, cat, note); noSpend = repo.noSpendStreak() }
+    fun deleteExpense(e: Expense) = io { repo.db.grow().deleteExpense(e); noSpend = repo.noSpendStreak() }
+    fun setBudget(cat: String, limit: Int) { prefs.setBudget(cat, limit); budgetsVersion++ }
+    fun setMonthBudget(v: Int) { prefs.monthBudget = v; budgetsVersion++ }
+
+    // Weekly review
+    var weekNow by mutableStateOf<WeekNumbers?>(null)
+        private set
+    var weekLast by mutableStateOf<WeekNumbers?>(null)
+        private set
+    var reviewChanges by mutableStateOf(repo.cachedReview())
+        private set
+    fun loadReview() = viewModelScope.launch(Dispatchers.IO) {
+        weekNow = repo.weekNumbers(day); weekLast = repo.weekNumbers(day - 7)
+        reviewChanges = repo.cachedReview()
+    }
+    fun askReview() = run("Reviewing your week…") {
+        val n = weekNow ?: repo.weekNumbers(day); val l = weekLast ?: repo.weekNumbers(day - 7)
+        reviewChanges = repo.weeklyChanges(n, l); null
+    }
+
+    /** Daily housekeeping for the growth features (cheap; AI only when there's something new). */
+    private fun growthOnStart() = viewModelScope.launch(Dispatchers.IO) {
+        try {
+            repo.rewardNoSpend()
+            noSpend = repo.noSpendStreak()
+            if (prefs.hasKey && prefs.cardGenDay != day) repo.generateCards()
+        } catch (_: Exception) { }
+        dungeon = repo.activeDungeon()
+        refreshJob()
+    }
     fun suggestMacros() = run("Analysing your progress…") { macroSuggestion = repo.suggestMacros(); null }
     fun applyMacros(m: MacroSuggestion) {
         prefs.kcalGoal = m.kcal; prefs.proteinGoal = m.protein; prefs.carbsGoal = m.carbs; prefs.fatGoal = m.fat

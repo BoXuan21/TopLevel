@@ -125,6 +125,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         openTarget = intent?.getStringExtra("open")
+        com.toplevel.app.ui.C.applyTheme(vm.prefs.theme)
         setContent {
             TopLevelTheme {
                 Root(vm, openTarget, { openTarget = null },
@@ -182,7 +183,11 @@ private fun Root(vm: AppViewModel, openTarget: String?, consumeTarget: () -> Uni
     LaunchedEffect(openTarget) {
         when (openTarget) {
             "checkin" -> { tab = HOME; checkIn = true }
+            "food" -> tab = FOOD
+            "scan" -> { tab = FOOD; vm.pendingScan = true }
+            "dungeon" -> { tab = MORE; morePage = "dungeons" }
             "status" -> tab = HOME
+            else -> if (openTarget?.startsWith("more:") == true) { tab = MORE; morePage = openTarget.substringAfter(":") }
         }
         if (openTarget != null) consumeTarget()
     }
@@ -194,7 +199,7 @@ private fun Root(vm: AppViewModel, openTarget: String?, consumeTarget: () -> Uni
         val level = Leveling.levelFor(Leveling.totals(t).values.sum())
         if (level > vm.prefs.lastSeenLevel && vm.wizardDone) {
             SystemEvents.show(Popup(Popup.Kind.LEVEL_UP, "NOTIFICATION", "LV ${level - 1}  →  LV $level",
-                lines = listOf("All stats recovered", "Rank ${Leveling.rank(level)} · ${Leveling.title(level)}"),
+                lines = listOf("+${com.toplevel.app.data.Growth.POINTS_PER_LEVEL} stat points to spend", "Rank ${Leveling.rank(level)} · ${Leveling.title(level)}"),
                 reward = "Keep going, Player."))
         }
         if (level != vm.prefs.lastSeenLevel) vm.prefs.lastSeenLevel = level
@@ -217,7 +222,7 @@ private fun Root(vm: AppViewModel, openTarget: String?, consumeTarget: () -> Uni
                         AnimatedContent(tab, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(120)) }, label = "tab") { t ->
                             when (t) {
                                 HOME -> HomeScreen(vm, openFood = { tab = FOOD }, openCheckIn = { checkIn = true },
-                                    openStatus = { tab = MORE; morePage = "status" })
+                                    openStatus = { tab = MORE; morePage = "status" }, openMore = { tab = MORE; morePage = it })
                                 FOOD -> FoodScreen(vm)
                                 2 -> TrainScreen(vm)
                                 COACH -> CoachScreen(vm)

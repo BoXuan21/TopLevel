@@ -20,7 +20,7 @@ data class Popup(
     /** Closes by itself after a few seconds (quests, logged meals). */
     val auto: Boolean = kind == Kind.QUEST,
 ) {
-    enum class Kind { NOTICE, QUEST, CLEAR, LEVEL_UP, ACHIEVEMENT, WARNING, BOSS, ARRIVED }
+    enum class Kind { NOTICE, QUEST, CLEAR, LEVEL_UP, ACHIEVEMENT, WARNING, BOSS, ARRIVED, JOB }
 }
 
 /** One-off "[SYSTEM]" pop-ups for the UI (quests, achievements, penalties, boss…). */

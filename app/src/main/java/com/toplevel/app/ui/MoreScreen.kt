@@ -44,6 +44,11 @@ private data class Entry(val id: String, val icon: String, val title: String, va
 
 private val entries = listOf(
     Entry("status", "◆", "Status", "Stats, weekly boss, focus", C.accent),
+    Entry("review", "▦", "Weekly review", "Your week in charts + top 3 changes", C.stat(Stat.INTELLECT)),
+    Entry("job", "♛", "Job change", "Class-change questlines, titles, themes", C.shadow),
+    Entry("dungeons", "⛩", "Dungeons", "Timed challenges: clear or take a penalty", C.bad),
+    Entry("cards", "✎", "Flashcards", "Review what you learned", C.stat(Stat.INTELLECT)),
+    Entry("money", "€", "Money", "Spending, limits, no-spend streak", C.warn),
     Entry("body", "◍", "Body", "Weight, waist and trend", C.stat(Stat.VITALITY)),
     Entry("journal", "▤", "Journal", "Work, learning and notes", C.stat(Stat.DISCIPLINE)),
     Entry("skills", "✦", "Skill tree", "What you're learning", C.stat(Stat.INTELLECT)),
@@ -77,6 +82,11 @@ fun MoreScreen(vm: AppViewModel, actions: Actions, page: String?, setPage: (Stri
                     "journal" -> JournalPage(vm)
                     "skills" -> SkillsPage(vm)
                     "vault" -> VaultScreen(vm)
+                    "review" -> ReviewPage(vm)
+                    "job" -> JobPage(vm)
+                    "dungeons" -> DungeonPage(vm)
+                    "cards" -> CardsPage(vm)
+                    "money" -> MoneyPage(vm)
                     else -> SetupScreen(vm, actions.requestPerms, actions.connectHealth, actions.backup, actions.restore)
                 }
             }

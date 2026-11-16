@@ -91,7 +91,9 @@ class Prefs(ctx: Context) {
         "height_cm" to heightCm.toString(), "age" to age.toString(), "sex" to sex,
         "activity" to activity.toString(), "body_goal" to bodyGoal, "water_goal" to waterGoal.toString(),
         "training_level" to trainingLevel.toString(), "equipment" to equipment, "calendar_write" to calendarWrite.toString(),
-    )
+        "job_json" to jobJson, "jobs_done" to jobsDone, "theme" to theme, "dungeons_cleared" to dungeonsCleared.toString(),
+        "budgets" to budgets, "month_budget" to monthBudget.toString(),
+    ) + Stat.entries.associate { "pts_${it.name}" to points(it).toString() }
 
     fun importMap(m: Map<String, String>) {
         m["name"]?.let { name = it }
@@ -116,6 +118,13 @@ class Prefs(ctx: Context) {
         m["training_level"]?.toIntOrNull()?.let { trainingLevel = it }
         m["equipment"]?.let { equipment = it }
         m["calendar_write"]?.toBooleanStrictOrNull()?.let { calendarWrite = it }
+        m["job_json"]?.let { jobJson = it }
+        m["jobs_done"]?.let { jobsDone = it }
+        m["theme"]?.let { theme = it }
+        m["dungeons_cleared"]?.toIntOrNull()?.let { dungeonsCleared = it }
+        m["budgets"]?.let { budgets = it }
+        m["month_budget"]?.toIntOrNull()?.let { monthBudget = it }
+        Stat.entries.forEach { s -> m["pts_${s.name}"]?.toIntOrNull()?.let { setPoints(s, it) } }
     }
 
     object Levels {
@@ -203,6 +212,66 @@ class Prefs(ctx: Context) {
     var stepLast: Long
         get() = sp.getLong("step_last", 0)
         set(v) = sp.edit().putLong("step_last", v).apply()
+
+    // Stat points: spent per stat (earned = 3 per level above 1)
+    fun points(stat: Stat): Int = sp.getInt("pts_${stat.name}", 0)
+    fun setPoints(stat: Stat, n: Int) = sp.edit().putInt("pts_${stat.name}", n.coerceAtLeast(0)).apply()
+    fun pointsSpent(): Int = Stat.entries.sumOf { points(it) }
+
+    // Job change (JSON state) and unlocked colour themes
+    var jobJson: String
+        get() = sp.getString("job_json", "") ?: ""
+        set(v) = sp.edit().putString("job_json", v).apply()
+    var jobsDone: String
+        get() = sp.getString("jobs_done", "") ?: ""
+        set(v) = sp.edit().putString("jobs_done", v).apply()
+    var theme: String
+        get() = sp.getString("theme", "system") ?: "system"
+        set(v) = sp.edit().putString("theme", v).apply()
+
+    // Dungeons
+    var dungeonJson: String
+        get() = sp.getString("dungeon_json", "") ?: ""
+        set(v) = sp.edit().putString("dungeon_json", v).apply()
+    var dungeonsCleared: Int
+        get() = sp.getInt("dungeons_cleared", 0)
+        set(v) = sp.edit().putInt("dungeons_cleared", v).apply()
+
+    // Flashcards
+    var cardGenDay: Long
+        get() = sp.getLong("card_gen_day", -1)
+        set(v) = sp.edit().putLong("card_gen_day", v).apply()
+    /** Highest "learned" log id already turned into cards. */
+    var cardLastLog: Long
+        get() = sp.getLong("card_last_log", 0)
+        set(v) = sp.edit().putLong("card_last_log", v).apply()
+    fun cardsReviewed(day: Long): Int = if (sp.getLong("cards_day", -1) == day) sp.getInt("cards_count", 0) else 0
+    fun setCardsReviewed(day: Long, n: Int) = sp.edit().putLong("cards_day", day).putInt("cards_count", n).apply()
+
+    // Spending limits: "Category=limit;…" (€ per month), plus an overall monthly budget
+    var budgets: String
+        get() = sp.getString("budgets", "") ?: ""
+        set(v) = sp.edit().putString("budgets", v).apply()
+    var monthBudget: Int
+        get() = sp.getInt("month_budget", 0)
+        set(v) = sp.edit().putInt("month_budget", v).apply()
+    fun budgetMap(): Map<String, Int> = budgets.split(";").mapNotNull {
+        val (k, v) = it.split("=").takeIf { p -> p.size == 2 } ?: return@mapNotNull null
+        v.toIntOrNull()?.let { n -> k to n }
+    }.toMap()
+    fun setBudget(cat: String, limit: Int) {
+        val m = budgetMap().toMutableMap()
+        if (limit > 0) m[cat] = limit else m.remove(cat)
+        budgets = m.entries.joinToString(";") { "${it.key}=${it.value}" }
+    }
+
+    // Weekly review (AI part cached per week)
+    var reviewWeek: Long
+        get() = sp.getLong("review_week", -1)
+        set(v) = sp.edit().putLong("review_week", v).apply()
+    var reviewJson: String
+        get() = sp.getString("review_json", "") ?: ""
+        set(v) = sp.edit().putString("review_json", v).apply()
 
     // Sound
     var sfxOn: Boolean

@@ -49,7 +49,7 @@ import com.toplevel.app.game.Leveling
 import java.time.LocalTime
 
 @Composable
-fun HomeScreen(vm: AppViewModel, openFood: () -> Unit, openCheckIn: () -> Unit, openStatus: () -> Unit) {
+fun HomeScreen(vm: AppViewModel, openFood: () -> Unit, openCheckIn: () -> Unit, openStatus: () -> Unit, openMore: (String) -> Unit = {}) {
     val quests by vm.quests.collectAsState(initial = emptyList())
     val food by vm.food.collectAsState(initial = emptyList())
     val checkIn by vm.checkInToday.collectAsState(initial = null)
@@ -120,6 +120,8 @@ fun HomeScreen(vm: AppViewModel, openFood: () -> Unit, openCheckIn: () -> Unit, 
                 Text("Tap to complete · hold to delete", color = C.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
             }
         }
+
+        item { ExtrasPanel(vm, openMore) }
 
         item { LearnPanel(vm) }
 

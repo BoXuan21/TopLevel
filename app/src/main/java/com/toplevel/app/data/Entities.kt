@@ -293,3 +293,33 @@ data class SavingsEntry(
     val note: String = "",
     val rewardId: Long? = null,
 )
+
+/** Spaced-repetition card, usually made from a "learned" journal entry. */
+@Serializable
+@Entity(tableName = "flashcards")
+data class Flashcard(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val front: String,
+    val back: String,
+    /** epochDay when the card is next due */
+    val due: Long,
+    /** days until next review after a "good" answer */
+    val interval: Int = 0,
+    val ease: Float = 2.5f,
+    val reps: Int = 0,
+    val createdAt: Long,
+    /** LogEntry id it was made from (0 = manual) */
+    val sourceLog: Long = 0,
+)
+
+/** Money spent (positive €). */
+@Serializable
+@Entity(tableName = "expenses")
+data class Expense(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val ts: Long,
+    val date: Long,
+    val amountEur: Float,
+    val category: String,
+    val note: String = "",
+)

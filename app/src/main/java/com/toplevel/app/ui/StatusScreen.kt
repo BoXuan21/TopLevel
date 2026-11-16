@@ -62,6 +62,7 @@ fun StatusScreen(vm: AppViewModel) {
         verticalArrangement = Gap,
     ) {
         item { PlayerCard(vm) { achOpen = true } }
+        item { StatPointsPanel(vm) }
         // Stats
         item {
             Panel(title = "Stats") {

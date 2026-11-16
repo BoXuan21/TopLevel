@@ -103,6 +103,11 @@ fun FoodScreen(vm: AppViewModel) {
         try { camera.launch(u) } catch (_: Exception) { vm.message = "No camera app found" }
     }
 
+    // Opened from the home-screen widget's "Scan" button
+    androidx.compose.runtime.LaunchedEffect(vm.pendingScan) {
+        if (vm.pendingScan) { vm.pendingScan = false; shoot("barcode") }
+    }
+
     val tk = food.sumOf { it.kcal }
     val tp = food.sumOf { it.protein }
     val tc = food.sumOf { it.carbs }

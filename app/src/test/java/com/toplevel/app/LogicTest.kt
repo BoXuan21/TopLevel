@@ -144,4 +144,43 @@ class LogicTest {
         assertTrue(C.isNotAppointment("Geburtstage", "addressbook#contacts@group.v.calendar.google.com"))
         assertTrue(!C.isNotAppointment("bo@example.com", "bo@example.com"))
     }
+
+    @Test fun statPoints() {
+        val G = com.toplevel.app.data.Growth
+        assertEquals(0, G.pointsEarned(1))
+        assertEquals(27, G.pointsEarned(10))
+        assertEquals(100, G.boost(100, 0))
+        assertEquals(130, G.boost(100, 10))
+        assertEquals(200, G.boost(100, 99)) // capped at ×2
+    }
+
+    @Test fun flashcardSchedule() {
+        val G = com.toplevel.app.data.Growth
+        val c = com.toplevel.app.data.Flashcard(front = "Q", back = "A", due = 100, createdAt = 0)
+        val g1 = G.review(c, 2, 100)
+        assertEquals(101, g1.due); assertEquals(1, g1.interval)
+        val g2 = G.review(g1, 2, 101)
+        assertEquals(3, g2.interval)
+        val g3 = G.review(g2, 2, 104)
+        assertEquals(8, g3.interval) // 3 × 2.5 rounded
+        val again = G.review(g3, 0, 112)
+        assertEquals(112, again.due); assertEquals(0, again.reps); assertTrue(again.ease < g3.ease)
+        assertTrue(G.review(g2, 3, 104).interval > g3.interval)
+    }
+
+    @Test fun noSpend() {
+        val G = com.toplevel.app.data.Growth
+        assertEquals(0, G.noSpendStreak(emptySet(), null, 100))
+        assertEquals(3, G.noSpendStreak(setOf(96L), 90, 100))   // 97, 98, 99 clean
+        assertEquals(0, G.noSpendStreak(setOf(99L), 90, 100))
+        assertEquals(2, G.noSpendStreak(emptySet(), 98, 100))   // never before the first logged day
+    }
+
+    @Test fun weekKeys() {
+        val G = com.toplevel.app.data.Growth
+        val mon = java.time.LocalDate.of(2026, 11, 16).toEpochDay() // a Monday
+        assertEquals(mon, G.weekKey(mon))
+        assertEquals(mon, G.weekKey(mon + 6))
+        assertEquals(mon + 7, G.weekKey(mon + 7))
+    }
 }

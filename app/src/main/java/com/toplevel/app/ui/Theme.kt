@@ -23,6 +23,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,10 +58,23 @@ object C {
     val bg2 = Color(0xFF050D1E)
     val panel = Color(0xFF061022)
     val panel2 = Color(0xFF0A1A36)
-    val border = Color(0xFF1B4E8F)
-    val accent = Color(0xFF2CC4FF)
-    val accentSoft = Color(0xFFA6EBFF)
-    val glow = Color(0xFF1E9BFF)
+
+    /** Accent palette: border, accent, soft accent, glow. Switchable (themes unlocked by job changes). */
+    class Palette(val border: Color, val accent: Color, val soft: Color, val glow: Color)
+    val palettes = mapOf(
+        "system" to Palette(Color(0xFF1B4E8F), Color(0xFF2CC4FF), Color(0xFFA6EBFF), Color(0xFF1E9BFF)),
+        "monarch" to Palette(Color(0xFF4A2E8F), Color(0xFFA77BFF), Color(0xFFDCCBFF), Color(0xFF7A3CFF)),
+        "crimson" to Palette(Color(0xFF8F1B33), Color(0xFFFF4D6D), Color(0xFFFFC2CC), Color(0xFFFF2E4D)),
+        "gold" to Palette(Color(0xFF8F6A1B), Color(0xFFFFC14D), Color(0xFFFFE7B3), Color(0xFFFFA000)),
+        "emerald" to Palette(Color(0xFF1B8F64), Color(0xFF3DF2B0), Color(0xFFB8FFE6), Color(0xFF00D98B)),
+    )
+    var palette by androidx.compose.runtime.mutableStateOf(palettes.getValue("system"))
+    fun applyTheme(id: String) { palette = palettes[id] ?: palettes.getValue("system") }
+
+    val border get() = palette.border
+    val accent get() = palette.accent
+    val accentSoft get() = palette.soft
+    val glow get() = palette.glow
     val text = Color(0xFFE4F3FF)
     val muted = Color(0xFF6E89AD)
     val good = Color(0xFF3DF2B0)

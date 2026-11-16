@@ -48,6 +48,7 @@ object Widgets {
         try {
             QuestWidget().updateAll(ctx)
             StatusWidget().updateAll(ctx)
+            FoodWidget().updateAll(ctx)
         } catch (_: Exception) { }
     }
 }
@@ -203,5 +204,75 @@ private fun StatusContent(name: String, quests: List<Quest>, totals: List<StatTo
             style = style(11, TEXT))
         Spacer(GlanceModifier.height(4.dp))
         Text("Quests ${quests.count { it.done }}/${quests.size}   ◈ $gold", style = style(11, DONE, bold = true))
+    }
+}
+
+// ───────────────────────── Food quick-add widget ─────────────────────────
+
+class FoodWidget : GlanceAppWidget() {
+    override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val repo = Repo.get(context)
+        val day = repo.today()
+        val initial = repo.life.foodSince(day).filter { it.date == day }
+        val flow = repo.life.foodFor(day)
+        provideContent {
+            val food by flow.collectAsState(initial = initial)
+            FoodContent(food.sumOf { it.kcal }, food.sumOf { it.protein }, repo.prefs.kcalGoal, repo.prefs.proteinGoal,
+                repo.prefs.water(day), repo.prefs.waterGoal)
+        }
+    }
+}
+
+class FoodWidgetReceiver : GlanceAppWidgetReceiver() {
+    override val glanceAppWidget: GlanceAppWidget = FoodWidget()
+}
+
+class AddWaterAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        val p = Repo.get(context).prefs
+        val day = Repo.get(context).today()
+        p.setWater(day, p.water(day) + 1)
+        FoodWidget().update(context, glanceId)
+    }
+}
+
+private fun openApp(ctx: Context, target: String) =
+    androidx.glance.appwidget.action.actionStartActivity(android.content.Intent(ctx, MainActivity::class.java)
+        .setFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        .putExtra("open", target))
+
+@Composable
+private fun FoodContent(kcal: Int, protein: Int, kcalGoal: Int, proteinGoal: Int, water: Int, waterGoal: Int) {
+    val ctx = androidx.glance.LocalContext.current
+    Column(modifier = GlanceModifier.fillMaxSize().background(BG).cornerRadius(20.dp).padding(12.dp)) {
+        Row(modifier = GlanceModifier.fillMaxWidth().clickable(openApp(ctx, "food")), verticalAlignment = Alignment.CenterVertically) {
+            Text("FUEL", style = style(12, ACCENT, bold = true))
+            Spacer(GlanceModifier.defaultWeight())
+            Text("💧 $water/$waterGoal", style = style(12, ACCENT_SOFT, bold = true))
+        }
+        Spacer(GlanceModifier.height(6.dp))
+        Text("$kcal / $kcalGoal kcal", style = style(15, TEXT, bold = true))
+        LinearProgressIndicator(progress = if (kcalGoal > 0) (kcal.toFloat() / kcalGoal).coerceIn(0f, 1f) else 0f,
+            modifier = GlanceModifier.fillMaxWidth().height(4.dp), color = ColorProvider(Color(0xFFFFC14D)), backgroundColor = ColorProvider(PANEL))
+        Spacer(GlanceModifier.height(4.dp))
+        Text("Protein $protein / $proteinGoal g", style = style(13, MUTED, bold = true))
+        LinearProgressIndicator(progress = if (proteinGoal > 0) (protein.toFloat() / proteinGoal).coerceIn(0f, 1f) else 0f,
+            modifier = GlanceModifier.fillMaxWidth().height(4.dp), color = ColorProvider(DONE), backgroundColor = ColorProvider(PANEL))
+        Spacer(GlanceModifier.defaultWeight())
+        Row(modifier = GlanceModifier.fillMaxWidth()) {
+            WidgetButton("▥ SCAN", GlanceModifier.defaultWeight().clickable(openApp(ctx, "scan")))
+            Spacer(GlanceModifier.width(6.dp))
+            WidgetButton("◈ LOG", GlanceModifier.defaultWeight().clickable(openApp(ctx, "food")))
+            Spacer(GlanceModifier.width(6.dp))
+            WidgetButton("+💧", GlanceModifier.defaultWeight().clickable(actionRunCallback<AddWaterAction>()))
+        }
+    }
+}
+
+@Composable
+private fun WidgetButton(label: String, modifier: GlanceModifier) {
+    Row(modifier = modifier.background(PANEL).cornerRadius(10.dp).padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = style(13, ACCENT, bold = true))
     }
 }

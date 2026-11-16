@@ -157,7 +157,7 @@ object Sound {
     }
 
     fun forPopup(kind: Popup.Kind): Fx = when (kind) {
-        Popup.Kind.LEVEL_UP -> Fx.LEVEL_UP
+        Popup.Kind.LEVEL_UP, Popup.Kind.JOB -> Fx.LEVEL_UP
         Popup.Kind.ACHIEVEMENT -> Fx.ACHIEVEMENT
         Popup.Kind.WARNING, Popup.Kind.BOSS -> Fx.WARNING
         Popup.Kind.QUEST, Popup.Kind.CLEAR -> Fx.QUEST

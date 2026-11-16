@@ -31,6 +31,8 @@ data class BackupFile(
     val gold: List<GoldEvent> = emptyList(),
     val rewards: List<Reward> = emptyList(),
     val savings: List<SavingsEntry> = emptyList(),
+    val cards: List<Flashcard> = emptyList(),
+    val expenses: List<Expense> = emptyList(),
 )
 
 private val backupJson = Json { ignoreUnknownKeys = true; prettyPrint = false; encodeDefaults = true }
@@ -48,6 +50,7 @@ suspend fun Repo.exportBackup(uri: Uri) {
         logs = b.logs(), skills = b.skills(), chat = b.chat(), memories = b.memories(), discover = b.discover(),
         sets = b.sets(), health = b.health(), body = b.body(), bosses = b.bosses(), achievements = b.achievements(),
         progress = b.progress(), sessionItems = b.sessionItems(), gold = b.gold(), rewards = b.rewards(), savings = b.savings(),
+        cards = db.grow().cardsAll(), expenses = db.grow().expensesAll(),
     )
     ctx.contentResolver.openOutputStream(uri, "wt")?.use {
         it.write(backupJson.encodeToString(BackupFile.serializer(), file).toByteArray())
@@ -71,6 +74,8 @@ suspend fun Repo.importBackup(uri: Uri) {
         b.putBody(f.body); b.putBosses(f.bosses); b.putAchievements(f.achievements)
         b.putProgress(f.progress); b.putSessionItems(f.sessionItems); b.putGold(f.gold)
         b.putRewards(f.rewards); b.putSavings(f.savings)
+        val g = db.grow()
+        g.wipeCards(); g.wipeExpenses(); g.putCards(f.cards); g.putExpenses(f.expenses)
     }
     prefs.importMap(f.prefs)
     prefs.lastQuestGen = -1

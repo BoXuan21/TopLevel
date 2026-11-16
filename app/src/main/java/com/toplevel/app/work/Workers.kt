@@ -18,6 +18,7 @@ import androidx.work.WorkerParameters
 import com.toplevel.app.MainActivity
 import com.toplevel.app.R
 import com.toplevel.app.data.Repo
+import com.toplevel.app.data.activeDungeon
 import com.toplevel.app.data.applyPenalties
 import com.toplevel.app.data.completeFocus
 import com.toplevel.app.data.generateBoss
@@ -164,4 +165,27 @@ object Scheduler {
         wm.enqueueUniquePeriodicWork("health", ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<HealthWorker>(1, TimeUnit.HOURS).build())
     }
+}
+
+/** Fires when a dungeon's timer runs out. */
+class DungeonWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
+    override suspend fun doWork(): Result {
+        val active = Repo.get(applicationContext).activeDungeon()
+        if (active != null && active.start == inputData.getLong("start", -1)) {
+            Notifier.show(applicationContext, 4, "Dungeon cleared?",
+                "${active.d.name}: time's up. Open the app to claim your clear.", "dungeon")
+        }
+        return Result.success()
+    }
+}
+
+object DungeonTimer {
+    fun start(ctx: Context, start: Long, minutes: Int) {
+        WorkManager.getInstance(ctx).enqueueUniqueWork("dungeon", ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<DungeonWorker>()
+                .setInitialDelay(minutes.toLong(), TimeUnit.MINUTES)
+                .setInputData(workDataOf("start" to start))
+                .build())
+    }
+    fun cancel(ctx: Context) = WorkManager.getInstance(ctx).cancelUniqueWork("dungeon")
 }
