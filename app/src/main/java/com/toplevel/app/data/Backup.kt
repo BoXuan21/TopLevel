@@ -61,8 +61,10 @@ suspend fun Repo.importBackup(uri: Uri) {
         ?: throw IllegalStateException("Couldn't open file")
     val f = backupJson.decodeFromString(BackupFile.serializer(), text)
     val b = db.backup()
-    db.clearAllTables()
     db.withTransaction {
+        b.wipeQuests(); b.wipeXp(); b.wipePlans(); b.wipeCheckins(); b.wipeFood(); b.wipeLogs(); b.wipeSkills()
+        b.wipeChat(); b.wipeMemories(); b.wipeDiscover(); b.wipeSets(); b.wipeHealth(); b.wipeBody(); b.wipeBosses()
+        b.wipeAchievements(); b.wipeProgress(); b.wipeSessionItems(); b.wipeGold(); b.wipeRewards(); b.wipeSavings()
         b.putQuests(f.quests); b.putXp(f.xp); b.putPlans(f.plans); b.putCheckins(f.checkins)
         b.putFood(f.food); b.putLogs(f.logs); b.putSkills(f.skills); b.putChat(f.chat)
         b.putMemories(f.memories); b.putDiscover(f.discover); b.putSets(f.sets); b.putHealth(f.health)
@@ -71,5 +73,6 @@ suspend fun Repo.importBackup(uri: Uri) {
         b.putRewards(f.rewards); b.putSavings(f.savings)
     }
     prefs.importMap(f.prefs)
+    prefs.lastQuestGen = -1
     Widgets.refresh(ctx)
 }
