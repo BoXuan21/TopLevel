@@ -115,8 +115,8 @@ suspend fun Repo.generateSession(): String? {
     if (!prefs.hasKey) return "Add your API key to get coached sessions."
     return try {
         val v = db.vault()
-        val ladderInfo = trackedLadders().joinToString("\n") { l ->
-            val p = v.progressOf(l.id) ?: SkillProgress(l.id)
+        val withProgress = trackedLadders().map { l -> l to (v.progressOf(l.id) ?: SkillProgress(l.id)) }
+        val ladderInfo = withProgress.joinToString("\n") { (l, p) ->
             "- ${l.name}: current stage ${l.stages[p.stage]} (stage ${p.stage + 1}/${l.stages.size}), " +
                 "best ${if (l.hold) "${p.bestHoldSec}s hold" else "${p.bestReps} reps"}; next: ${l.stages.getOrNull(p.stage + 1) ?: "mastered"}"
         }
