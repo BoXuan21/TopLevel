@@ -109,7 +109,7 @@ class MainActivity : ComponentActivity() {
             } catch (_: Exception) { }
             return
         }
-        healthLauncher.launch(com.toplevel.app.health.HealthSync.permissions)
+        healthLauncher.launch(com.toplevel.app.health.HealthSync.requestPermissions)
     }
 
     private fun backup() {

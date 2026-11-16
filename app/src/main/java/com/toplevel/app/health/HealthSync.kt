@@ -32,6 +32,10 @@ object HealthSync {
         HealthPermission.getReadPermission(WeightRecord::class),
     )
 
+    /** Lets the hourly worker read while the app is closed (ignored on older Health Connect). */
+    const val BACKGROUND_READ = "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
+    val requestPermissions = permissions + BACKGROUND_READ
+
     fun available(ctx: Context): Boolean =
         HealthConnectClient.getSdkStatus(ctx) == HealthConnectClient.SDK_AVAILABLE
 
@@ -88,7 +92,7 @@ object HealthSync {
                     "workout" -> workoutMin >= q.target
                     else -> false
                 }
-                if (reached && q.target > 0) repo.toggleQuest(q.id)
+                if (reached && q.target > 0) repo.completeQuest(q.id)
             }
             repo.checkAchievements()
             Widgets.refresh(ctx)

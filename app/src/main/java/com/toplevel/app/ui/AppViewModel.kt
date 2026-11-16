@@ -54,41 +54,50 @@ import com.toplevel.app.health.HealthSync
 import com.toplevel.app.work.Focus
 import com.toplevel.app.work.Scheduler
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     val repo = Repo.get(app)
     val prefs = repo.prefs
     val day: Long get() = repo.today()
 
+    /** Current day as a stream so every "today" screen rolls over at midnight. */
+    private val today = MutableStateFlow(repo.today())
+    private fun <T> daily(f: (Long) -> Flow<T>): Flow<T> = today.flatMapLatest { f(it) }
+
     // Streams (screens collect these)
-    val quests = repo.game.questsFor(day)
+    val quests = daily { repo.game.questsFor(it) }
     val statTotals = repo.game.statTotals()
     val plans = repo.life.plans()
-    val food = repo.life.foodFor(day)
+    val food = daily { repo.life.foodFor(it) }
     val recentLogs = repo.life.recentLogs(50)
     val skills = repo.life.skills()
     val chat = repo.life.chat()
     val memories = repo.life.memories()
-    val discover = repo.life.discoverFor(day)
-    val checkInToday = repo.life.checkIn(day)
-    val setsToday = repo.fit.setsFor(day)
+    val discover = daily { repo.life.discoverFor(it) }
+    val checkInToday = daily { repo.life.checkIn(it) }
+    val setsToday = daily { repo.fit.setsFor(it) }
     val recentExercises = repo.fit.recentExercises()
     val body = repo.fit.body()
-    val healthToday = repo.fit.healthFor(day)
-    val boss = repo.fit.boss(repo.weekStart())
+    val healthToday = daily { repo.fit.healthFor(it) }
+    val boss = daily { repo.fit.boss(repo.weekStart(it)) }
     val achievements = repo.fit.achievements()
     fun exerciseHistory(ex: String) = repo.fit.setsForExercise(ex)
     private val vault = repo.db.vault()
     val gold = vault.goldBalance()
     val pot = vault.pot()
     val savings = vault.savings()
-    val savedThisMonth = vault.depositedSince(repo.monthStart())
+    val savedThisMonth = daily { d -> vault.depositedSince(java.time.LocalDate.ofEpochDay(d).withDayOfMonth(1).toEpochDay()) }
     val rewards = vault.rewards()
     val ladderProgress = vault.progress()
-    val session = vault.session(day)
+    val session = daily { vault.session(it) }
 
     var busy by mutableStateOf<String?>(null)   // label of running AI task
         private set
@@ -132,6 +141,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onStart() {
+        today.value = repo.today()
         refreshCalendar()
         focusEnd = prefs.focusEnd
         viewModelScope.launch(Dispatchers.IO) {
@@ -205,7 +215,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var coachSessions by mutableStateOf(prefs.coachSessions)
         private set
     fun updateCoachSessions(on: Boolean) { prefs.coachSessions = on; coachSessions = on }
-    val sets14 = repo.fit.setsSinceFlow(repo.today() - 13)
+    val sets14 = daily { repo.fit.setsSinceFlow(it - 13) }
     val allSets = repo.fit.allSets()
     fun buildSession() = run("Your coach is building today's session…") { repo.generateSession() }
     fun toggleSessionItem(i: SessionItem) = io { repo.toggleSessionItem(i) }
@@ -258,10 +268,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun suggestSkills() = run("Building your learning path…") { repo.suggestSkills() }
 
     // Check-in
-    fun saveCheckIn(c: CheckIn) = run("Reflecting on your day…") {
-        val e = repo.saveCheckIn(c)
-        repo.checkAchievements()
-        e
+    fun saveCheckIn(c: CheckIn) {
+        // Never drop a report: if another AI task is running, save in the background anyway.
+        if (busy == null) run("Reflecting on your day…") {
+            val e = repo.saveCheckIn(c)
+            repo.checkAchievements()
+            e
+        } else io { repo.saveCheckIn(c); repo.checkAchievements() }
     }
 
     // Boss

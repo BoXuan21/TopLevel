@@ -103,6 +103,7 @@ class EveningWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
 class HealthWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
         HealthSync.sync(Repo.get(applicationContext))
+        Widgets.refresh(applicationContext) // also rolls widgets over to the new day
         return Result.success()
     }
 }

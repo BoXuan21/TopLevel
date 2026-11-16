@@ -206,7 +206,7 @@ fun StatusScreen(vm: AppViewModel, openSetup: () -> Unit, openCheckIn: () -> Uni
                 },
             ) {
                 if (quests.isEmpty()) Text("No quests yet. Tap ↻ to generate.", color = C.muted)
-                quests.forEach { q -> QuestRow(q, onToggle = { vm.toggle(q) }, onDelete = { vm.deleteQuest(q) }) }
+                quests.forEach { q -> androidx.compose.runtime.key(q.id) { QuestRow(q, onToggle = { vm.toggle(q) }, onDelete = { vm.deleteQuest(q) }) } }
                 if (quests.isNotEmpty() && quests.all { it.done }) {
                     Spacer(Modifier.height(8.dp))
                     SystemNotice("All daily quests cleared. Bonus +40 DIS awarded.")

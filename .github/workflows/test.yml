@@ -5,6 +5,9 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   unit:
     runs-on: ubuntu-latest
@@ -78,6 +81,22 @@ jobs:
           mkdir -p screenshots
           tar xf shots.tar -C screenshots || true
           ls -R screenshots | head -50
+
+      # Screenshots also go to a branch (screenshots-<device>) so they're easy to view on GitHub
+      - name: Publish screenshots to branch
+        if: always()
+        run: |
+          mkdir -p pub
+          find screenshots -name "*.png" -exec cp {} pub/ \; || true
+          cp instrument.txt pub/ 2>/dev/null || true
+          cd pub
+          [ -n "$(ls -A)" ] || exit 0
+          git init -q -b shots
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "Screenshots ${{ matrix.device }} · run ${{ github.run_number }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" shots:screenshots-${{ matrix.device }}
 
       - uses: actions/upload-artifact@v4
         if: always()
