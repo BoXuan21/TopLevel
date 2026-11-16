@@ -58,7 +58,7 @@ fun SkillsPanels(vm: AppViewModel) {
             val list = skills.filter { it.status == st }
             if (list.isNotEmpty()) {
                 Panel(title = "$label · ${list.size}") {
-                    list.forEach { s -> SkillRow(vm, s) }
+                    list.forEach { s -> androidx.compose.runtime.key(s.id) { SkillRow(vm, s) } }
                 }
             }
         }

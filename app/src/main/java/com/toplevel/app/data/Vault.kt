@@ -6,6 +6,7 @@ import com.toplevel.app.widget.Widgets
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
+import androidx.room.withTransaction
 import java.time.LocalDate
 
 // ───────────────────────── Calisthenics ladders ─────────────────────────
@@ -66,9 +67,11 @@ fun Repo.trackedLadders(): List<Cali.Ladder> =
 /** Log a calisthenics hold or rep set and update the ladder's best. */
 suspend fun Repo.addCaliSet(exercise: String, holdSec: Int, reps: Int, weightKg: Float = 0f, note: String = "") {
     val day = today()
-    val before = fit.setCountFor(day)
-    val id = fit.insertSet(WorkoutSet(date = day, ts = System.currentTimeMillis(), exercise = exercise.trim(),
-        weightKg = weightKg, reps = reps, holdSec = holdSec, note = note.trim()))
+    val (before, id) = db.withTransaction {
+        val b = fit.setCountFor(day)
+        b to fit.insertSet(WorkoutSet(date = day, ts = System.currentTimeMillis(), exercise = exercise.trim(),
+            weightKg = weightKg, reps = reps, holdSec = holdSec, note = note.trim()))
+    }
     if (before < 12) award(Stat.STRENGTH, 3, "set:$id")
     Cali.match(exercise)?.let { (l, stage) ->
         val v = db.vault()
@@ -85,7 +88,7 @@ suspend fun Repo.addCaliSet(exercise: String, holdSec: Int, reps: Int, weightKg:
     }
     if (before + 1 == 6) {
         game.questsForNow(day).firstOrNull { !it.done && it.stat == Stat.STRENGTH && it.autoType == "" }
-            ?.let { toggleQuest(it.id) }
+            ?.let { completeQuest(it.id) }
     }
     checkAchievements()
     Widgets.refresh(ctx)
@@ -117,8 +120,9 @@ suspend fun Repo.generateSession(): String? {
         val v = db.vault()
         val withProgress = trackedLadders().map { l -> l to (v.progressOf(l.id) ?: SkillProgress(l.id)) }
         val ladderInfo = withProgress.joinToString("\n") { (l, p) ->
-            "- ${l.name}: current stage ${l.stages[p.stage]} (stage ${p.stage + 1}/${l.stages.size}), " +
-                "best ${if (l.hold) "${p.bestHoldSec}s hold" else "${p.bestReps} reps"}; next: ${l.stages.getOrNull(p.stage + 1) ?: "mastered"}"
+            val st = p.stage.coerceIn(0, l.stages.lastIndex)
+            "- ${l.name}: current stage ${l.stages[st]} (stage ${st + 1}/${l.stages.size}), " +
+                "best ${if (l.hold) "${p.bestHoldSec}s hold" else "${p.bestReps} reps"}; next: ${l.stages.getOrNull(st + 1) ?: "mastered"}"
         }
         val arr = claude.askJson(
             system = """You are an elite calisthenics coach (planche/front lever specialist). Build TODAY's session.
@@ -155,7 +159,7 @@ suspend fun Repo.toggleSessionItem(item: SessionItem) {
         award(Stat.STRENGTH, 40, "session:${item.date}")
         gainGold(20, "session:${item.date}")
         game.questsForNow(item.date).filter { !it.done && it.stat == Stat.STRENGTH && it.autoType == "" }
-            .forEach { toggleQuest(it.id) }
+            .forEach { completeQuest(it.id) }
         SystemEvents.emit("Training session complete. +40 STR, +20 Gold")
     } else {
         revoke("session:${item.date}")
@@ -185,7 +189,7 @@ suspend fun Repo.deposit(amountEur: Float, note: String = "") {
     gainGold((amountEur / 2).toInt().coerceIn(1, 50), "save:$id")
     game.questsForNow(today()).firstOrNull {
         !it.done && (it.title.contains("sav", true) || it.title.contains("spar", true) || it.title.contains("€"))
-    }?.let { toggleQuest(it.id) }
+    }?.let { completeQuest(it.id) }
     checkAchievements()
     Widgets.refresh(ctx)
 }
@@ -244,7 +248,18 @@ suspend fun Repo.addReward(name: String, priceEur: Float, goldCost: Int? = null,
 fun defaultGoldCost(priceEur: Float): Int = (priceEur * 3).toInt().coerceAtLeast(50)
 
 /** Claim it: spends the Gold and takes the money out of savings. Returns error or null. */
-suspend fun Repo.redeem(r: Reward): String? {
+suspend fun Repo.redeem(reward: Reward): String? {
+    val v = db.vault()
+    val result = db.withTransaction {
+        val r = v.reward(reward.id) ?: return@withTransaction "Reward not found"
+        if (r.redeemedAt != null) return@withTransaction null // already claimed (double tap)
+        redeemTx(r)
+    }
+    Widgets.refresh(ctx)
+    return result
+}
+
+private suspend fun Repo.redeemTx(r: Reward): String? {
     val v = db.vault()
     val st = rewardStatus(r, v.goldBalanceNow(), v.potNow())
     if (!st.ready) return "Not yet: " + listOfNotNull(
@@ -259,7 +274,6 @@ suspend fun Repo.redeem(r: Reward): String? {
     v.updateReward(r.copy(redeemedAt = System.currentTimeMillis()))
     award(Stat.SPIRIT, 30, "reward:${r.id}")
     checkAchievements()
-    Widgets.refresh(ctx)
     return null
 }
 
