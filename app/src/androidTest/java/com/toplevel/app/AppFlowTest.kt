@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -209,7 +210,8 @@ class AppFlowTest {
         compose.onNodeWithText("BoXuan").assertExists()
         shot("status")
         scroll(); shot("status_quests")
-        scroll(2); shot("status_boss_discovery")
+        scroll(2); shot("status_focus_boss")
+        scroll(2); shot("status_discovery")
 
         // Completing a quest awards EXP + Gold
         val xpBefore = runBlocking { totalXp() }
@@ -259,7 +261,7 @@ class AppFlowTest {
         scrollTo("Start check-in")
         compose.onAllNodesWithText("Start check-in").onFirst().performClick(); settle()
         shot("checkin")
-        compose.onNodeWithText("Cancel").performClick(); settle()
+        compose.onNodeWithText("Cancel").performScrollTo().performClick(); settle()
 
         // LEVEL UP: push XP over the next level
         runBlocking {

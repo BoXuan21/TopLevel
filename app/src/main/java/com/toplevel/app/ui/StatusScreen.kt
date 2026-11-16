@@ -104,58 +104,6 @@ fun StatusScreen(vm: AppViewModel, openSetup: () -> Unit, openCheckIn: () -> Uni
             }
         }
 
-        // Health
-        if (vm.healthConnected && health != null) {
-            item {
-                val h = health!!
-                Panel(title = "Vitals · synced") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Vital("STEPS", "${h.steps}", Modifier.weight(1f))
-                        Vital("SLEEP", "${h.sleepMin / 60}h${"%02d".format(h.sleepMin % 60)}", Modifier.weight(1f))
-                        Vital("WORKOUT", "${h.workoutMin}m", Modifier.weight(1f))
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Bar(h.steps / 10_000f, C.stat(Stat.VITALITY))
-                }
-            }
-        }
-
-        // Focus
-        item { FocusPanel(vm) }
-
-        // Weekly boss
-        item {
-            val b = boss
-            Panel(
-                title = "Weekly boss",
-                action = {
-                    if (b == null || !b.defeated) IconButton(onClick = { vm.newBoss() }, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Filled.Refresh, "New boss", tint = C.accent)
-                    }
-                },
-            ) {
-                if (b == null) Text("No boss yet. Tap ↻ to summon this week's boss.", color = C.muted, fontSize = 14.sp)
-                else {
-                    Text(b.name.uppercase(), color = if (b.defeated) C.good else C.bad, fontSize = 18.sp,
-                        fontWeight = FontWeight.Black, letterSpacing = 2.sp)
-                    Text(b.goal, color = C.text, fontSize = 14.sp)
-                    Spacer(Modifier.height(6.dp))
-                    Chip(if (b.defeated) "DEFEATED" else "REWARD +${b.xp} EXP", if (b.defeated) C.good else C.warn)
-                    if (!b.defeated) {
-                        Spacer(Modifier.height(8.dp))
-                        GhostButton("I defeated it") { vm.defeatBoss() }
-                    }
-                    if (b.report.isNotBlank()) {
-                        var showReport by remember { mutableStateOf(false) }
-                        TextButton(onClick = { showReport = !showReport }) {
-                            Text(if (showReport) "Hide last week's report" else "Last week's report", color = C.accent)
-                        }
-                        if (showReport) Text(b.report, color = C.text, fontSize = 13.sp, lineHeight = 19.sp)
-                    }
-                }
-            }
-        }
-
         // Stats
         item {
             Panel(title = "Stats") {
@@ -171,6 +119,22 @@ fun StatusScreen(vm: AppViewModel, openSetup: () -> Unit, openCheckIn: () -> Uni
                         Text("$lvl", color = C.text, fontWeight = FontWeight.Bold, fontSize = 15.sp,
                             modifier = Modifier.width(36.dp).padding(start = 10.dp))
                     }
+                }
+            }
+        }
+
+        // Health
+        if (vm.healthConnected && health != null) {
+            item {
+                val h = health!!
+                Panel(title = "Vitals · synced") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Vital("STEPS", "${h.steps}", Modifier.weight(1f))
+                        Vital("SLEEP", "${h.sleepMin / 60}h${"%02d".format(h.sleepMin % 60)}", Modifier.weight(1f))
+                        Vital("WORKOUT", "${h.workoutMin}m", Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Bar(h.steps / 10_000f, C.stat(Stat.VITALITY))
                 }
             }
         }
@@ -210,6 +174,42 @@ fun StatusScreen(vm: AppViewModel, openSetup: () -> Unit, openCheckIn: () -> Uni
                 if (quests.isNotEmpty() && quests.all { it.done }) {
                     Spacer(Modifier.height(8.dp))
                     SystemNotice("All daily quests cleared. Bonus +40 DIS awarded.")
+                }
+            }
+        }
+
+        // Focus
+        item { FocusPanel(vm) }
+
+        // Weekly boss
+        item {
+            val b = boss
+            Panel(
+                title = "Weekly boss",
+                action = {
+                    if (b == null || !b.defeated) IconButton(onClick = { vm.newBoss() }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Filled.Refresh, "New boss", tint = C.accent)
+                    }
+                },
+            ) {
+                if (b == null) Text("No boss yet. Tap ↻ to summon this week's boss.", color = C.muted, fontSize = 14.sp)
+                else {
+                    Text(b.name.uppercase(), color = if (b.defeated) C.good else C.bad, fontSize = 18.sp,
+                        fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                    Text(b.goal, color = C.text, fontSize = 14.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Chip(if (b.defeated) "DEFEATED" else "REWARD +${b.xp} EXP", if (b.defeated) C.good else C.warn)
+                    if (!b.defeated) {
+                        Spacer(Modifier.height(8.dp))
+                        GhostButton("I defeated it") { vm.defeatBoss() }
+                    }
+                    if (b.report.isNotBlank()) {
+                        var showReport by remember { mutableStateOf(false) }
+                        TextButton(onClick = { showReport = !showReport }) {
+                            Text(if (showReport) "Hide last week's report" else "Last week's report", color = C.accent)
+                        }
+                        if (showReport) Text(b.report, color = C.text, fontSize = 13.sp, lineHeight = 19.sp)
+                    }
                 }
             }
         }
