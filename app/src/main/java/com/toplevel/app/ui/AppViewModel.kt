@@ -60,7 +60,7 @@ import com.toplevel.app.data.Product
 import com.toplevel.app.data.SystemEvents
 import com.toplevel.app.data.estimateFoodPhoto
 import com.toplevel.app.data.PlanType
-import com.toplevel.app.data.summarizePlan
+import com.toplevel.app.data.compactPlan
 import com.toplevel.app.health.StepCounter
 import com.toplevel.app.data.nextMoves
 import com.toplevel.app.data.whatToEat
@@ -289,14 +289,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // Plans from files (Excel / CSV)
     fun importPlan(uri: Uri, type: String = PlanType.TRAINING) = run("Reading your plan…") {
         val text = com.toplevel.app.data.PlanImport.read(getApplication(), uri)
-        repo.life.upsertPlan(Plan(type, text, System.currentTimeMillis()))
-        val lines = if (prefs.hasKey) try { repo.summarizePlan(type, text) } catch (_: Exception) { emptyList() } else emptyList()
+        val (plan, lines) = if (prefs.hasKey) try { repo.compactPlan(type, text) } catch (_: Exception) { text to emptyList() }
+            else text to emptyList()
+        repo.life.upsertPlan(Plan(type, plan, System.currentTimeMillis()))
         SystemEvents.show(Popup(Popup.Kind.CLEAR, "PLAN LOADED",
             "${PlanType.label(type)} imported (${text.lines().size} rows). Your quests now follow it.",
             lines = lines))
         if (prefs.hasKey && wizardDone) {
             repo.generateQuests(force = true)
-            advice = emptyList(); prefs.adviceJson = ""
         }
         null
     }
@@ -328,7 +328,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var adviceBusy by mutableStateOf(false)
         private set
-    val adviceStale get() = advice.isEmpty() || System.currentTimeMillis() - adviceTs > 3 * 3_600_000L || !sameDay(adviceTs)
+    /** Auto-refresh at most once a day (saves tokens); the ↻ button refreshes on demand. */
+    val adviceStale get() = advice.isEmpty() || !sameDay(adviceTs)
     fun refreshAdvice() {
         if (adviceBusy || !prefs.hasKey) return
         adviceBusy = true

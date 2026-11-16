@@ -52,7 +52,7 @@ suspend fun Repo.estimateFoodPhoto(jpegBase64: String, note: String): Repo.Macro
         "Identify the food in the photo and estimate the whole visible portion. If the photo shows a nutrition label " +
             "or packaging, read the exact printed values and scale them to the portion in my note (or one serving). " +
             "$goals $FOOD_JSON\nRespond with JSON only.",
-        buildJsonArray { add(msg) }, maxTokens = 400,
+        buildJsonArray { add(msg) }, maxTokens = 300, small = true,
     )
     val o = claude.extractJson(Claude.textOf(res))?.jsonObject ?: throw ClaudeException("Couldn't read that photo.")
     return macrosOf(o, "Meal (photo)")
@@ -73,7 +73,7 @@ suspend fun Repo.nextMoves(): List<Advice> {
             "Return {\"moves\": [{\"title\": imperative, max 8 words, \"detail\": concrete how-to, max 25 words, " +
             "\"why\": grounded in their data, max 18 words, \"kind\": one of food|train|work|learn|rest|sleep|money|mind}]} " +
             "with exactly 3 moves, best first. Match the user's language.",
-        user = buildContext(), maxTokens = 700,
+        user = buildContext(lite = true), maxTokens = 500,
     )
     val moves = (o as? JsonObject)?.get("moves")?.jsonArray ?: o.jsonArray
     return moves.mapNotNull { it as? JsonObject }.map {
@@ -89,20 +89,27 @@ suspend fun Repo.whatToEat(atHome: String = ""): String = claude.ask(
         "\nFormat: one line on how today is going. Then 2–3 concrete options as lines starting with '• ' " +
         "(name, rough portion, ~kcal and protein). Then one line starting with 'Tip: '. " +
         "Under 110 words, plain text, no markdown headers or bold. Match the user's language.",
-    user = buildContext() + if (atHome.isNotBlank()) "\n\n## Food I have at home right now\n$atHome" else "",
-    maxTokens = 500,
+    user = buildContext(lite = true) + if (atHome.isNotBlank()) "\n\n## Food I have at home right now\n$atHome" else "",
+    maxTokens = 400, small = true,
 )
 
-/** AI: confirm an imported plan in a few short lines (what it understood). */
-suspend fun Repo.summarizePlan(type: String, text: String): List<String> {
+/**
+ * AI, once per import: compress a spreadsheet plan into a compact text plan (so every later AI call sends
+ * far fewer tokens) plus a few lines confirming what was understood.
+ */
+suspend fun Repo.compactPlan(type: String, text: String): Pair<String, List<String>> {
     val o = claude.askJson(
         system = "The user imported their ${PlanType.label(type).lowercase()} from a spreadsheet (rows are ' | ' separated). " +
-            "Summarise what you understood in 3–5 very short lines (max 9 words each), e.g. one line per training day " +
-            "or block, so they can check it was read correctly. Return {\"lines\": [..]}. Match the user's language.",
-        user = text, maxTokens = 400,
-    )
-    return ((o as? JsonObject)?.get("lines")?.jsonArray ?: return emptyList())
+            "1) Rewrite it as a compact plain-text plan that keeps every exercise, set/rep/time target, progression rule " +
+            "and weekday, but drops empty cells, repetition and formatting. Max 1500 characters. One line per day/block.\n" +
+            "2) Summarise what you understood in 3–5 very short lines (max 9 words each) so they can check it.\n" +
+            "Return {\"plan\": \"...\", \"lines\": [..]}. Match the user's language.",
+        user = text, maxTokens = 900, small = true,
+    ) as? JsonObject ?: return text to emptyList()
+    val plan = Claude.str(o, "plan")?.takeIf { it.length > 40 } ?: text
+    val lines = (o["lines"] as? kotlinx.serialization.json.JsonArray).orEmpty()
         .mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.take(5)
+    return plan to lines
 }
 
 /** Rule-based advice when there's no API key (or as an instant placeholder). */
