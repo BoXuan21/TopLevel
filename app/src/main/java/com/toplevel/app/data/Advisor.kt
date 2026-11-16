@@ -96,19 +96,40 @@ suspend fun Repo.whatToEat(atHome: String = ""): String = claude.ask(
  * AI, once per import: compress a spreadsheet plan into a compact text plan (so every later AI call sends
  * far fewer tokens) plus a few lines confirming what was understood.
  */
-suspend fun Repo.compactPlan(type: String, text: String): Pair<String, List<String>> {
-    val o = claude.askJson(
-        system = "The user imported their ${PlanType.label(type).lowercase()} from a spreadsheet (rows are ' | ' separated). " +
+class PlanSummary(val plan: String, val lines: List<String>, val skills: List<String>?)
+
+suspend fun Repo.compactPlan(type: String, file: PlanFile): PlanSummary {
+    val training = type == PlanType.TRAINING
+    val ladders = Cali.ladders.joinToString(", ") { "${it.id} (${it.name})" }
+    val content = buildJsonArray {
+        if (file.pdfBase64 != null) add(buildJsonObject {
+            put("type", "document")
+            put("source", buildJsonObject {
+                put("type", "base64"); put("media_type", "application/pdf"); put("data", file.pdfBase64)
+            })
+        })
+        add(buildJsonObject {
+            put("type", "text")
+            put("text", if (file.pdfBase64 != null) "My plan is in this PDF." else file.text)
+        })
+    }
+    val o = claude.sendJson(
+        "The user imported their ${PlanType.label(type).lowercase()} " +
+            (if (file.pdfBase64 != null) "as a PDF. " else "from a spreadsheet (rows are ' | ' separated). ") +
             "1) Rewrite it as a compact plain-text plan that keeps every exercise, set/rep/time target, progression rule " +
             "and weekday, but drops empty cells, repetition and formatting. Max 1500 characters. One line per day/block.\n" +
             "2) Summarise what you understood in 3–5 very short lines (max 9 words each) so they can check it.\n" +
-            "Return {\"plan\": \"...\", \"lines\": [..]}. Match the user's language.",
-        user = text, maxTokens = 900, small = true,
-    ) as? JsonObject ?: return text to emptyList()
-    val plan = Claude.str(o, "plan")?.takeIf { it.length > 40 } ?: text
-    val lines = (o["lines"] as? kotlinx.serialization.json.JsonArray).orEmpty()
-        .mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.take(5)
-    return plan to lines
+            (if (training) "3) List which of these calisthenics skills the plan actually trains (ids only; [] if none): $ladders\n" +
+                "Return {\"plan\": \"...\", \"lines\": [..], \"skills\": [..]}." else "Return {\"plan\": \"...\", \"lines\": [..]}.") +
+            " Match the user's language.",
+        buildJsonArray { add(buildJsonObject { put("role", "user"); put("content", content) }) },
+        maxTokens = 1200, small = file.pdfBase64 == null,
+    ) as? JsonObject ?: return PlanSummary(file.text, emptyList(), null)
+    val plan = Claude.str(o, "plan")?.takeIf { it.length > 40 } ?: file.text
+    fun strings(key: String) = (o[key] as? kotlinx.serialization.json.JsonArray)
+        ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+    val skills = if (training) strings("skills")?.filter { Cali.byId(it) != null } else null
+    return PlanSummary(plan, strings("lines").orEmpty().take(5), skills)
 }
 
 /** Rule-based advice when there's no API key (or as an instant placeholder). */

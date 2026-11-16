@@ -132,7 +132,7 @@ fun SetupScreen(
                     PlanEditor(t, plans.firstOrNull { it.type == t }?.content.orEmpty()) { vm.savePlan(t, it) }
                 }
                 Spacer(Modifier.height(8.dp))
-                Text("Plan in a spreadsheet? Import an Excel (.xlsx) or CSV file.", color = C.muted, fontSize = 13.sp)
+                Text("Plan in a file? Import a PDF, Excel (.xlsx) or CSV. For training plans, only the skills in it get tracked.", color = C.muted, fontSize = 13.sp)
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     GhostButton("Import training plan", enabled = vm.busy == null) {

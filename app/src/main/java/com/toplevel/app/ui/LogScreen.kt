@@ -191,7 +191,40 @@ private fun catColor(c: String): Color = when (c) {
     else -> C.stat(Stat.SPIRIT)
 }
 
-// ───────────────────────── Pages (opened from More) ─────────────────────────
+// ───────────────────────── Journal tab ─────────────────────────
+
+/** Sections of the Journal tab (deep links like "more:cards" land here). */
+val JournalTabs = listOf("journal", "skills", "cards", "learn")
+
+@Composable
+fun JournalTab(vm: AppViewModel) {
+    val due by vm.dueCards.collectAsState(initial = emptyList())
+    Column {
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)) {
+            SystemHeader("JOURNAL")
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Segment("Journal", vm.journalTab == "journal") { vm.journalTab = "journal" }
+                Segment("Skill tree", vm.journalTab == "skills") { vm.journalTab = "skills" }
+                Segment("Flashcards" + if (due.isNotEmpty()) " · ${due.size}" else "", vm.journalTab == "cards") { vm.journalTab = "cards" }
+                Segment("Learn", vm.journalTab == "learn") { vm.journalTab = "learn" }
+            }
+        }
+        androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+            when (vm.journalTab) {
+                "skills" -> SkillsPage(vm)
+                "cards" -> CardsPage(vm)
+                "learn" -> LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Gap) {
+                    item { LearnPanel(vm) }
+                    item { Spacer(Modifier.height(24.dp)) }
+                }
+                else -> JournalPage(vm)
+            }
+        }
+    }
+}
+
+// ───────────────────────── Pages ─────────────────────────
 
 @Composable
 fun BodyPage(vm: AppViewModel) {

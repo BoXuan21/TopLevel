@@ -8,14 +8,28 @@ import org.xmlpull.v1.XmlPullParser
 import java.io.ByteArrayInputStream
 import java.util.zip.ZipInputStream
 
-/** Reads a plan from an Excel (.xlsx) or CSV file into plain text the coach can read. */
+/** An imported plan: plain text, or a PDF the AI reads directly (it understands tables, scans and photos). */
+class PlanFile(val text: String, val pdfBase64: String? = null)
+
+/** Reads a plan from an Excel (.xlsx), CSV or PDF file. */
 object PlanImport {
     const val MAX_CHARS = 12_000
+    private const val MAX_PDF_BYTES = 15 * 1024 * 1024
 
-    fun read(ctx: Context, uri: Uri): String {
-        val name = displayName(ctx, uri).lowercase()
+    fun isPdf(b: ByteArray) = b.size > 4 && b[0] == '%'.code.toByte() && b[1] == 'P'.code.toByte() &&
+        b[2] == 'D'.code.toByte() && b[3] == 'F'.code.toByte()
+
+    fun load(ctx: Context, uri: Uri): PlanFile {
         val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
             ?: throw IllegalArgumentException("Couldn't open the file")
+        if (isPdf(bytes)) {
+            if (bytes.size > MAX_PDF_BYTES) throw IllegalArgumentException("That PDF is over 15 MB. Export just the plan pages.")
+            return PlanFile("", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP))
+        }
+        return PlanFile(text(displayName(ctx, uri).lowercase(), bytes))
+    }
+
+    private fun text(name: String, bytes: ByteArray): String {
         val isZip = bytes.size > 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()
         val text = when {
             isZip -> xlsx(bytes)

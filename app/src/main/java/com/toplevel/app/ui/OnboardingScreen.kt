@@ -104,6 +104,7 @@ fun OnboardingScreen(vm: AppViewModel, actions: Actions) {
     var level by rememberSaveable { mutableIntStateOf(p.trainingLevel) }
     var equipment by rememberSaveable { mutableStateOf(p.equipment.split(",").map { it.trim() }.filter { it.isNotEmpty() }) }
     var stageSel by rememberSaveable { mutableStateOf(mapOf<String, Int>()) }
+    var trainSel by rememberSaveable { mutableStateOf<List<String>?>(null) } // null = not touched (keep current / plan's)
     val progress by vm.ladderProgress.collectAsState(initial = emptyList())
     val plans by vm.plans.collectAsState(initial = emptyList())
     val planPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -143,9 +144,9 @@ fun OnboardingScreen(vm: AppViewModel, actions: Actions) {
             4 -> {
                 p.trainingLevel = level
                 p.equipment = equipment.joinToString(", ")
-                stageSel.forEach { (id, s) -> if (s >= 0) vm.setStage(id, s, reward = false) }
-                val tracked = stageSel.filterValues { it >= 0 }.keys.toList()
-                if (tracked.isNotEmpty()) vm.setLadders(tracked)
+                trainSel?.let { sel -> vm.setLadders(com.toplevel.app.data.Cali.ladders.map { it.id }.filter { it in sel }) }
+                val tracked = vm.trackedLadders.split(",").map { it.trim() }
+                stageSel.forEach { (id, s) -> if (s >= 0 && id in tracked) vm.setStage(id, s, reward = false) }
             }
             5 -> if (bodyOk) {
                 p.sex = sex; p.age = age.toInt(); p.heightCm = height.toInt(); p.activity = activity; p.bodyGoal = bodyGoal
@@ -242,24 +243,31 @@ fun OnboardingScreen(vm: AppViewModel, actions: Actions) {
                                     Pick(e, e in equipment) { equipment = if (e in equipment) equipment - e else equipment + e }
                                 }
                             }
-                            Label("SKILLS: WHERE ARE YOU NOW?")
-                            Text("Tap your current stage. Leave on \"Not yet\" for skills you don't train.", color = C.muted, fontSize = 14.sp)
-                            com.toplevel.app.data.Cali.ladders.forEach { l ->
-                                val cur = stageSel[l.id] ?: progress.firstOrNull { it.ladder == l.id }?.stage ?: -1
-                                Text(l.name.uppercase(), color = C.text, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                            Label("YOUR TRAINING PLAN")
+                            val has = plans.any { it.type == PlanType.TRAINING && it.content.isNotBlank() }
+                            Text(if (has) "✓ Training plan loaded. Quests and skills follow it."
+                                else "Have a plan as PDF, Excel or CSV? Import it and your quests follow it.",
+                                color = if (has) C.good else C.muted, fontSize = 14.sp)
+                            GhostButton(if (has) "Replace plan file" else "Import plan (PDF / Excel / CSV)", Modifier.fillMaxWidth(),
+                                enabled = vm.busy == null) { planPicker.launch(planMimeTypes) }
+                            Label("WHICH SKILLS DO YOU TRAIN?")
+                            Text("Only these get tracked and asked about. Change it any time in Train.", color = C.muted, fontSize = 14.sp)
+                            val ladders = com.toplevel.app.data.Cali.ladders
+                            val chosen = trainSel ?: vm.trackedLadders.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                ladders.forEach { l ->
+                                    Pick(l.name, l.id in chosen) { trainSel = if (l.id in chosen) chosen - l.id else chosen + l.id }
+                                }
+                                Pick("None", chosen.isEmpty()) { trainSel = emptyList() }
+                            }
+                            ladders.filter { it.id in chosen }.forEach { l ->
+                                val cur = stageSel[l.id] ?: progress.firstOrNull { it.ladder == l.id }?.stage ?: 0
+                                Text("${l.name.uppercase()}: WHERE ARE YOU NOW?", color = C.text, fontSize = 15.sp, fontWeight = FontWeight.Bold,
                                     letterSpacing = 1.5.sp, modifier = Modifier.padding(top = 6.dp))
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Pick("Not yet", cur < 0) { stageSel = stageSel + (l.id to -1) }
                                     l.stages.forEachIndexed { i, s -> Pick(s, cur == i) { stageSel = stageSel + (l.id to i) } }
                                 }
                             }
-                            Label("YOUR TRAINING PLAN")
-                            val has = plans.any { it.type == PlanType.TRAINING && it.content.isNotBlank() }
-                            Text(if (has) "✓ Training plan loaded. Your quests will follow it."
-                                else "Have your plan in Excel? Import the .xlsx (or a .csv) and your quests follow it.",
-                                color = if (has) C.good else C.muted, fontSize = 14.sp)
-                            GhostButton(if (has) "Replace plan file" else "Import plan (Excel / CSV)", Modifier.fillMaxWidth(),
-                                enabled = vm.busy == null) { planPicker.launch(planMimeTypes) }
                         }
                         5 -> Ask("Your body", "Used to calculate your calories and macros. Stays on this phone.") {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

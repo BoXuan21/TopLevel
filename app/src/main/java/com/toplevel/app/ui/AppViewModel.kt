@@ -188,7 +188,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         focusEnd = prefs.focusEnd
         viewModelScope.launch(Dispatchers.IO) {
             healthConnected = HealthSync.granted(getApplication())
-            if (healthConnected) HealthSync.sync(repo) else StepCounter.sync(repo)
+            if (healthConnected) HealthSync.sync(repo)
+            StepCounter.sync(repo) // only ever raises today's count, so it's a safe fallback either way
             repo.checkAchievements()
             refreshStreak()
         }
@@ -315,15 +316,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun logDish(d: com.toplevel.app.data.Dish) { clearFoodSearch(); io { logMacros(d.macros()) } }
     fun pickProduct(p: Product) { clearFoodSearch(); scanned = p }
 
-    // Plans from files (Excel / CSV)
+    // Plans from files (PDF / Excel / CSV)
     fun importPlan(uri: Uri, type: String = PlanType.TRAINING) = run("Reading your plan…") {
-        val text = com.toplevel.app.data.PlanImport.read(getApplication(), uri)
-        val (plan, lines) = if (prefs.hasKey) try { repo.compactPlan(type, text) } catch (_: Exception) { text to emptyList() }
-            else text to emptyList()
-        repo.life.upsertPlan(Plan(type, plan, System.currentTimeMillis()))
+        val file = com.toplevel.app.data.PlanImport.load(getApplication(), uri)
+        val pdf = file.pdfBase64 != null
+        if (pdf && !prefs.hasKey) return@run "Reading a PDF needs your Anthropic API key (Settings). Excel/CSV work without it."
+        val sum = if (prefs.hasKey) try { repo.compactPlan(type, file) } catch (e: Exception) {
+            if (pdf) return@run "Couldn't read that PDF: ${e.message}"
+            com.toplevel.app.data.PlanSummary(file.text, emptyList(), null)
+        } else com.toplevel.app.data.PlanSummary(file.text, emptyList(), null)
+        repo.life.upsertPlan(Plan(type, sum.plan, System.currentTimeMillis()))
+        // Only track the skills the plan really trains (no more handstand questions if you don't do handstands)
+        val skillLine = sum.skills?.let { ids ->
+            withContext(Dispatchers.Main) { setLadders(ids) }
+            if (ids.isEmpty()) "No skill ladders in this plan" else
+                "Tracking: " + ids.mapNotNull { com.toplevel.app.data.Cali.byId(it)?.name }.joinToString(", ")
+        }
         SystemEvents.show(Popup(Popup.Kind.CLEAR, "PLAN LOADED",
-            "${PlanType.label(type)} imported (${text.lines().size} rows). Your quests now follow it.",
-            lines = lines))
+            "${PlanType.label(type)} imported" + (if (pdf) " from PDF" else " (${file.text.lines().size} rows)") +
+                ". Your quests now follow it.",
+            lines = sum.lines + listOfNotNull(skillLine)))
         if (prefs.hasKey && wizardDone) {
             repo.generateQuests(force = true)
         }
@@ -331,7 +343,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // Steps from the phone sensor (when Health Connect isn't linked)
-    fun syncSteps() = viewModelScope.launch(Dispatchers.IO) { if (!healthConnected) StepCounter.sync(repo) }
+    fun syncSteps() = viewModelScope.launch(Dispatchers.IO) { StepCounter.sync(repo) }
 
     // What to eat next (AI)
     var foodAdvice by mutableStateOf(if (prefs.foodAdviceTs > 0 && sameDay(prefs.foodAdviceTs)) prefs.foodAdvice else "")
@@ -389,6 +401,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun restartWizard() { prefs.wizardDone = false; wizardDone = false }
 
     // ───────── Growth features ─────────
+
+    /** Which section of the Journal tab is open. */
+    var journalTab by mutableStateOf("journal")
 
     /** Opened from the food widget: start the barcode camera. */
     var pendingScan by mutableStateOf(false)

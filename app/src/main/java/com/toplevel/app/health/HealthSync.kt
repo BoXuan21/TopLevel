@@ -39,18 +39,26 @@ object HealthSync {
     fun available(ctx: Context): Boolean =
         HealthConnectClient.getSdkStatus(ctx) == HealthConnectClient.SDK_AVAILABLE
 
-    suspend fun granted(ctx: Context): Boolean {
-        if (!available(ctx)) return false
+    private val STEPS = HealthPermission.getReadPermission(StepsRecord::class)
+    private val SLEEP = HealthPermission.getReadPermission(SleepSessionRecord::class)
+    private val EXERCISE = HealthPermission.getReadPermission(ExerciseSessionRecord::class)
+    private val WEIGHT = HealthPermission.getReadPermission(WeightRecord::class)
+
+    private suspend fun grantedSet(ctx: Context): Set<String> {
+        if (!available(ctx)) return emptySet()
         return try {
             HealthConnectClient.getOrCreate(ctx).permissionController.getGrantedPermissions()
-                .containsAll(permissions)
-        } catch (_: Exception) { false }
+        } catch (_: Exception) { emptySet() }
     }
+
+    /** Connected = at least steps are readable. Sleep, workouts and weight are optional extras. */
+    suspend fun granted(ctx: Context): Boolean = STEPS in grantedSet(ctx)
 
     /** Syncs today's data and auto-completes measurable quests. Returns an error message or null. */
     suspend fun sync(repo: Repo): String? {
         val ctx = repo.ctx
-        if (!granted(ctx)) return "Health Connect not connected"
+        val ok = grantedSet(ctx)
+        if (STEPS !in ok) return "Health Connect not connected"
         return try {
             val client = HealthConnectClient.getOrCreate(ctx)
             val z = ZoneId.systemDefault()
@@ -58,28 +66,31 @@ object HealthSync {
             val dayStart = today.atStartOfDay(z).toInstant()
             val now = java.time.Instant.now()
 
-            val steps = client.aggregate(
+            val hcSteps = client.aggregate(
                 AggregateRequest(setOf(StepsRecord.COUNT_TOTAL), TimeRangeFilter.between(dayStart, now))
             )[StepsRecord.COUNT_TOTAL] ?: 0L
 
             // Sleep that ended between yesterday 18:00 and now = "last night"
             val sleepFrom = today.minusDays(1).atTime(18, 0).atZone(z).toInstant()
-            val sleepMin = client.readRecords(
+            val sleepMin = if (SLEEP !in ok) 0L else client.readRecords(
                 ReadRecordsRequest(SleepSessionRecord::class, TimeRangeFilter.between(sleepFrom, now))
             ).records.sumOf { Duration.between(it.startTime, it.endTime).toMinutes() }
 
-            val sessions = client.readRecords(
+            val sessions = if (EXERCISE !in ok) emptyList() else client.readRecords(
                 ReadRecordsRequest(ExerciseSessionRecord::class, TimeRangeFilter.between(dayStart, now))
             ).records
             val workoutMin = sessions.sumOf { Duration.between(it.startTime, it.endTime).toMinutes() }
             val workoutNames = sessions.joinToString(", ") { it.title ?: "workout" }
 
-            val weight = client.readRecords(
+            val weight = if (WEIGHT !in ok) null else client.readRecords(
                 ReadRecordsRequest(WeightRecord::class,
                     TimeRangeFilter.between(today.minusDays(1).atStartOfDay(z).toInstant(), now))
             ).records.maxByOrNull { it.time }?.weight?.inKilograms
 
             val day = today.toEpochDay()
+            // Never go below what the phone's own step sensor already counted today
+            val cur = repo.fit.healthSince(day).firstOrNull { it.date == day }
+            val steps = maxOf(hcSteps, (cur?.steps ?: 0).toLong())
             repo.fit.upsertHealth(HealthDay(day, steps.toInt(), sleepMin.toInt(), workoutMin.toInt(),
                 workoutNames, System.currentTimeMillis()))
             if (weight != null) repo.logBody(weight.toFloat(), source = "health")

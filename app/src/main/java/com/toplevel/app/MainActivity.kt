@@ -164,30 +164,39 @@ private val tabs = listOf(
     Tab("Home", "◆"),
     Tab("Food", "◈"),
     Tab("Train", "⚔"),
+    Tab("Journal", "▤"),
     Tab("Coach", "◎"),
-    Tab("More", "☰"),
 )
 private const val HOME = 0
 private const val FOOD = 1
-private const val COACH = 3
-private const val MORE = 4
+private const val TRAIN = 2
+private const val JOURNAL = 3
+private const val COACH = 4
 
 @Composable
 private fun Root(vm: AppViewModel, openTarget: String?, consumeTarget: () -> Unit, actions: Actions) {
     var tab by rememberSaveable { mutableIntStateOf(HOME) }
-    var morePage by rememberSaveable { mutableStateOf<String?>(null) }
+    // Pages opened from the menu, as a back stack: "menu/dungeons"
+    var pages by rememberSaveable { mutableStateOf("") }
+    val page = pages.substringAfterLast('/').ifBlank { null }
     var checkIn by remember { mutableStateOf(false) }
     val snack = remember { SnackbarHostState() }
     val totals by vm.statTotals.collectAsState(initial = null)
 
+    fun open(id: String) {
+        if (id in com.toplevel.app.ui.JournalTabs) { pages = ""; tab = JOURNAL; vm.journalTab = id; return }
+        pages = if (pages.isBlank()) id else "$pages/$id"
+    }
+    fun back() { pages = pages.substringBeforeLast('/', "") }
+
     LaunchedEffect(openTarget) {
         when (openTarget) {
-            "checkin" -> { tab = HOME; checkIn = true }
-            "food" -> tab = FOOD
-            "scan" -> { tab = FOOD; vm.pendingScan = true }
-            "dungeon" -> { tab = MORE; morePage = "dungeons" }
-            "status" -> tab = HOME
-            else -> if (openTarget?.startsWith("more:") == true) { tab = MORE; morePage = openTarget.substringAfter(":") }
+            "checkin" -> { tab = HOME; pages = ""; checkIn = true }
+            "food" -> { tab = FOOD; pages = "" }
+            "scan" -> { tab = FOOD; pages = ""; vm.pendingScan = true }
+            "dungeon" -> { pages = ""; open("dungeons") }
+            "status" -> { tab = HOME; pages = "" }
+            else -> if (openTarget?.startsWith("more:") == true) { pages = ""; open(openTarget.substringAfter(":")) }
         }
         if (openTarget != null) consumeTarget()
     }
@@ -213,25 +222,27 @@ private fun Root(vm: AppViewModel, openTarget: String?, consumeTarget: () -> Uni
         } else Scaffold(
             containerColor = Color.Transparent,
             snackbarHost = { SnackbarHost(snack) },
-            bottomBar = { NavBar(tab) { if (it == tab && it == MORE) morePage = null; tab = it } },
+            bottomBar = { NavBar(if (page == null) tab else -1) { pages = ""; tab = it } },
         ) { pad ->
             val wide = LocalConfiguration.current.screenWidthDp >= 600
             Box(Modifier.fillMaxSize().padding(pad)) {
                 Row(Modifier.fillMaxSize()) {
                     Box(Modifier.weight(1f)) {
-                        AnimatedContent(tab, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(120)) }, label = "tab") { t ->
+                        if (page != null) {
+                            MoreScreen(vm, actions, page, open = ::open, back = ::back)
+                        } else AnimatedContent(tab, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(120)) }, label = "tab") { t ->
                             when (t) {
                                 HOME -> HomeScreen(vm, openFood = { tab = FOOD }, openCheckIn = { checkIn = true },
-                                    openStatus = { tab = MORE; morePage = "status" }, openMore = { tab = MORE; morePage = it })
+                                    openMore = ::open, connectHealth = actions.connectHealth)
                                 FOOD -> FoodScreen(vm)
-                                2 -> TrainScreen(vm)
-                                COACH -> CoachScreen(vm)
-                                else -> MoreScreen(vm, actions, morePage) { morePage = it }
+                                TRAIN -> TrainScreen(vm)
+                                JOURNAL -> com.toplevel.app.ui.JournalTab(vm)
+                                else -> CoachScreen(vm)
                             }
                         }
                     }
                     // Fold unfolded: coach always open on the right
-                    if (wide && tab != COACH) {
+                    if (wide && (tab != COACH || page != null)) {
                         Box(Modifier.width(1.dp).fillMaxHeight()
                             .background(Brush.verticalGradient(listOf(Color.Transparent, C.accent.copy(alpha = 0.6f), Color.Transparent))))
                         Box(Modifier.weight(0.85f)) { CoachScreen(vm) }

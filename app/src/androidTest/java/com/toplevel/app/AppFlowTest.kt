@@ -80,6 +80,7 @@ class AppFlowTest {
         p.onboarded = true
         p.wizardDone = true
         p.name = "BoXuan"
+        p.eveningHour = 0 // evening report always visible on Home during the test
         p.adviceJson = ""; p.adviceTs = 0; p.foodAdvice = ""; p.foodAdviceTs = 0
         p.setWater(day, 4)
         p.apiKey = "sk-ant-demo-not-real"
@@ -190,12 +191,10 @@ class AppFlowTest {
         compose.onAllNodes(hasContentDescription(label)).onFirst().performClick(); settle()
     }
 
-    /** Opens a page from the More menu. */
+    /** Opens a page from the menu (☰ on Home). */
     private fun more(entry: String) {
-        tab("More")
-        if (compose.onAllNodes(hasContentDescription("Back")).fetchSemanticsNodes().isNotEmpty()) {
-            compose.onNode(hasContentDescription("Back")).performClick(); settle()
-        }
+        tab("Home")
+        compose.onNodeWithText("MENU").performClick(); settle()
         scrollTo(entry)
         compose.onNodeWithText(entry).performClick(); settle()
     }
@@ -268,22 +267,24 @@ class AppFlowTest {
         scroll(2); shot("train_volume")
         scroll(2); shot("train_progress_chart")
 
-        // MORE pages
-        tab("More"); shot("more_menu")
-        more("STATUS"); shot("status")
+        // JOURNAL tab
+        tab("Journal"); shot("journal")
+        compose.onNodeWithText("Skill tree").performClick(); settle(); shot("skills")
+
+        // MENU pages
+        tab("Home"); compose.onNodeWithText("MENU").performClick(); settle(); shot("menu")
+        more("Status"); shot("status")
         scroll(2); shot("status_boss_discovery")
-        more("BODY"); shot("body")
-        more("JOURNAL"); shot("journal")
-        more("SKILL TREE"); shot("skills")
+        more("Body"); shot("body")
 
         // VAULT: deposit +€10 → pot 350
-        more("VAULT"); shot("vault")
+        more("Vault"); shot("vault")
         compose.onNodeWithText("+€10").performClick()
         waitFor("pot €350") { repo.db.vault().potNow() >= 349.9f }
         settle(); dismissPopups(); scroll(); shot("vault_rewards")
 
         // SETTINGS
-        more("SETTINGS"); shot("settings")
+        more("Settings"); shot("settings")
         scroll(2); shot("settings_plans")
 
         // COACH

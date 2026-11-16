@@ -414,6 +414,7 @@ fun VoiceButton(onText: (String) -> Unit) {
 
 /** File types accepted when importing a plan (Excel / CSV / text). */
 val planMimeTypes = arrayOf(
+    "application/pdf",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.ms-excel", "text/csv", "text/comma-separated-values", "text/plain", "application/octet-stream",
 )

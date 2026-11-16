@@ -49,7 +49,7 @@ import com.toplevel.app.game.Leveling
 import java.time.LocalTime
 
 @Composable
-fun HomeScreen(vm: AppViewModel, openFood: () -> Unit, openCheckIn: () -> Unit, openStatus: () -> Unit, openMore: (String) -> Unit = {}) {
+fun HomeScreen(vm: AppViewModel, openFood: () -> Unit, openCheckIn: () -> Unit, openMore: (String) -> Unit, connectHealth: () -> Unit) {
     val quests by vm.quests.collectAsState(initial = emptyList())
     val food by vm.food.collectAsState(initial = emptyList())
     val checkIn by vm.checkInToday.collectAsState(initial = null)
@@ -70,29 +70,50 @@ fun HomeScreen(vm: AppViewModel, openFood: () -> Unit, openCheckIn: () -> Unit, 
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Gap) {
         item {
-            Column {
-                Text("[ SYSTEM ]", color = C.accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
-                Text(
-                    when (hour) { in 5..11 -> "GOOD MORNING"; in 12..17 -> "GOOD AFTERNOON"; else -> "GOOD EVENING" },
-                    color = C.muted, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp,
-                )
-                Text(vm.prefs.name.ifBlank { "Player" }.uppercase(), color = Color.White, fontFamily = Fonts.display,
-                    fontWeight = FontWeight.Black, fontSize = 26.sp, letterSpacing = 2.sp, style = glowStyle(C.accent, 26f))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        when (hour) { in 5..11 -> "GOOD MORNING"; in 12..17 -> "GOOD AFTERNOON"; else -> "GOOD EVENING" },
+                        color = C.muted, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp,
+                    )
+                    Text(vm.prefs.name.ifBlank { "Player" }.uppercase(), color = Color.White, fontFamily = Fonts.display,
+                        fontWeight = FontWeight.Black, fontSize = 24.sp, letterSpacing = 2.sp, style = glowStyle(C.accent, 24f))
+                }
+                // Everything that isn't a tab lives here
+                Column(
+                    Modifier.clip(SmallShape).background(C.panel.copy(alpha = 0.9f)).tap { openMore("menu") }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text("☰", color = C.accent, fontSize = 20.sp)
+                    Text("MENU", color = C.accent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                }
             }
         }
 
-        item { PlayerCard(vm, onClick = openStatus) }
+        item { PlayerCard(vm, onClick = { openMore("status") }) }
+
+        // Today at a glance: steps (from Samsung Health / Health Connect, or the phone), food, water
+        item {
+            val steps = health?.steps ?: 0
+            val noSource = !vm.healthConnected && steps == 0
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TodayTile("STEPS", if (noSource) "—" else "%,d".format(steps).replace(',', '.'),
+                    if (vm.healthConnected) "Health" else if (noSource) "tap to link" else "phone",
+                    steps / 10_000f, C.stat(Stat.STRENGTH), Modifier.weight(1f)) {
+                    if (!vm.healthConnected) connectHealth() else vm.syncHealth()
+                }
+                TodayTile("KCAL", "$kcal", "/ ${vm.prefs.kcalGoal}", kcal.toFloat() / vm.prefs.kcalGoal.coerceAtLeast(1),
+                    C.warn, Modifier.weight(1f), openFood)
+                TodayTile("PROTEIN", "${protein}g", "/ ${vm.prefs.proteinGoal}g", protein.toFloat() / vm.prefs.proteinGoal.coerceAtLeast(1),
+                    C.stat(Stat.VITALITY), Modifier.weight(1f), openFood)
+                TodayTile("WATER", "${vm.water}", "/ ${vm.prefs.waterGoal}", vm.water.toFloat() / vm.prefs.waterGoal.coerceAtLeast(1),
+                    C.accent, Modifier.weight(1f)) { vm.addWater(1) }
+            }
+        }
 
         item { AdvicePanel(moves, ai = vm.prefs.hasKey && vm.advice.isNotEmpty(), busy = vm.adviceBusy,
             canRefresh = vm.prefs.hasKey) { vm.refreshAdvice() } }
-
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                QuickTile("◈", "LOG MEAL", Modifier.weight(1f), C.stat(Stat.VITALITY), openFood)
-                QuickTile("◐", "CHECK-IN", Modifier.weight(1f), C.stat(Stat.SPIRIT), openCheckIn)
-                QuickTile("◷", "FOCUS 25", Modifier.weight(1f), C.stat(Stat.DISCIPLINE)) { vm.startFocus(25) }
-            }
-        }
 
         item {
             val done = quests.count { it.done }
@@ -123,19 +144,8 @@ fun HomeScreen(vm: AppViewModel, openFood: () -> Unit, openCheckIn: () -> Unit, 
 
         item { ExtrasPanel(vm, openMore) }
 
-        item { LearnPanel(vm) }
-
-        item {
-            Panel(Modifier.tap(openFood), title = "Body today", color = C.stat(Stat.VITALITY)) {
-                MiniMacro("STEPS", health?.steps ?: 0, 10_000, "", C.stat(Stat.STRENGTH))
-                MiniMacro("CALORIES", kcal, vm.prefs.kcalGoal, "kcal", C.warn)
-                MiniMacro("PROTEIN", protein, vm.prefs.proteinGoal, "g", C.stat(Stat.VITALITY))
-                MiniMacro("WATER", vm.water, vm.prefs.waterGoal, "glasses", C.accent)
-                Text("Open Food to scan, log and get meal advice ›", color = C.accentSoft, fontSize = 13.sp)
-            }
-        }
-
-        item {
+        // Evening report: only once the evening starts (or after you've filed it)
+        if (checkIn != null || hour >= vm.prefs.eveningHour - 2) item {
             Panel(title = "Evening report", color = C.stat(Stat.SPIRIT)) {
                 val c = checkIn
                 if (c == null) {
@@ -274,31 +284,19 @@ fun kindColor(kind: String): Color = when (kind) {
 }
 
 @Composable
-private fun QuickTile(icon: String, label: String, modifier: Modifier, color: Color, onClick: () -> Unit) {
+private fun TodayTile(label: String, value: String, sub: String, fraction: Float, color: Color, modifier: Modifier, onClick: () -> Unit) {
     Column(
         modifier
-            .glow(color.copy(alpha = 0.8f), SmallShape, radius = 8.dp, strength = 0.5f)
+            .glow(color.copy(alpha = 0.6f), SmallShape, radius = 6.dp, strength = 0.35f)
             .clip(SmallShape)
-            .background(Brush.verticalGradient(listOf(color.copy(alpha = 0.16f), C.panel.copy(alpha = 0.9f))))
+            .background(Brush.verticalGradient(listOf(color.copy(alpha = 0.14f), C.panel.copy(alpha = 0.9f))))
             .tap(onClick)
-            .padding(vertical = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .padding(horizontal = 8.dp, vertical = 10.dp),
     ) {
-        Text(icon, color = color, fontSize = 22.sp, style = glowStyle(color, 14f))
-        Spacer(Modifier.height(4.dp))
-        Text(label, color = C.text, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Text(label, color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, maxLines = 1)
+        Text(value, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(sub, color = C.muted, fontSize = 11.sp, maxLines = 1)
+        Spacer(Modifier.height(6.dp))
+        Bar(fraction, color, height = 3)
     }
-}
-
-@Composable
-private fun MiniMacro(label: String, value: Int, goal: Int, unit: String, color: Color) {
-    Row(Modifier.fillMaxWidth()) {
-        Text(label, color = C.text, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp,
-            modifier = Modifier.weight(1f))
-        Text("$value / $goal $unit".trim(), color = if (value > goal * 1.1 && unit != "glasses" && unit.isNotEmpty()) C.bad else C.muted,
-            fontSize = 13.sp, fontWeight = FontWeight.Bold)
-    }
-    Spacer(Modifier.height(4.dp))
-    Bar(if (goal > 0) value.toFloat() / goal else 0f, color)
-    Spacer(Modifier.height(10.dp))
 }
