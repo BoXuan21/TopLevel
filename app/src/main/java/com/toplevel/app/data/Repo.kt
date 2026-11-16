@@ -219,7 +219,7 @@ Return: [{"title": "...", "detail": "short how/when", "stat": "STRENGTH", "xp": 
             system = "Estimate nutrition for the described food/meal. Use typical portion sizes if unspecified. " +
                 "User's daily targets: ${prefs.kcalGoal} kcal, ${prefs.proteinGoal} g protein, goal: ${prefs.bodyGoal}. " +
                 foodJsonSpec,
-            user = description, maxTokens = 400,
+            user = description, maxTokens = 300, small = true,
         ).jsonObject
         return macrosOf(o, description)
     }
@@ -336,7 +336,7 @@ Never repeat anything from the 'already suggested' list. Match the user's langua
 Return {"videos":[{"title":"...","channel":"...","why":"one short line","query":"youtube search query"}],
         "tools":[{"name":"...","category":"e.g. CLI tool / book / method","why":"what it helps with + first step","query":"web search query"}],
         "songs":[{"title":"...","artist":"...","why":"one short line"}]}""",
-                user = buildContext() + "\n\n## Already suggested (don't repeat)\n" + past.ifBlank { "(none)" },
+                user = buildContext(lite = true) + "\n\n## Already suggested (don't repeat)\n" + past.ifBlank { "(none)" }, maxTokens = 1200,
             ).jsonObject
             val items = mutableListOf<DiscoverItem>()
             o["songs"]?.jsonArray?.mapNotNull { it as? JsonObject }?.forEach { s ->
@@ -529,7 +529,7 @@ Their calendar holds their appointments: treat them as fixed and plan around the
 Match their training level and equipment (see Training profile); adapt to what they've already done today (steps, sets, food logged).
 
 ${buildContext()}"""
-            val history = life.recentChat(30)
+            val history = life.recentChat(16)
             val msgs = mutableListOf<JsonObject>()
             // API requires alternating roles starting with user; merge consecutive same-role messages.
             history.forEach { m ->
@@ -548,7 +548,7 @@ ${buildContext()}"""
             val actions = mutableListOf<String>()
             var finalText = ""
             for (round in 0 until 6) {
-                val res = claude.send(system, JsonArray(convo), chatTools(), maxTokens = 2048)
+                val res = claude.send(system, JsonArray(convo), chatTools(), maxTokens = 1500, cache = true)
                 val content = res["content"]?.jsonArray ?: JsonArray(emptyList())
                 val text = Claude.textOf(res)
                 if (text.isNotBlank()) finalText = text
@@ -582,7 +582,7 @@ ${buildContext()}"""
 
     // ───────────────────────── Context for Claude ─────────────────────────
 
-    suspend fun buildContext(): String {
+    suspend fun buildContext(lite: Boolean = false): String {
         val today = LocalDate.now()
         val day = today.toEpochDay()
         val sb = StringBuilder()
@@ -608,7 +608,7 @@ ${buildContext()}"""
         val plans = life.plansNow().filter { it.content.isNotBlank() }
         if (plans.isNotEmpty()) {
             sb.append("\n## Stored plans\n")
-            plans.forEach { sb.append("### ${PlanType.label(it.type)}\n${it.content.take(if (it.type == PlanType.TRAINING) PlanImport.MAX_CHARS else 4000)}\n\n") }
+            plans.forEach { sb.append("### ${PlanType.label(it.type)}\n${it.content.take(if (lite) 900 else if (it.type == PlanType.TRAINING) PlanImport.MAX_CHARS else 4000)}\n\n") }
         }
 
         val mems = life.memoriesNow()
@@ -641,7 +641,7 @@ ${buildContext()}"""
         if (todayFood.isEmpty()) sb.append("(nothing logged yet)\n")
         todayFood.forEach { sb.append("- ${it.name}: ${it.kcal} kcal, P${it.protein} C${it.carbs} F${it.fat}\n") }
         sb.append("Total: ${todayFood.sumOf { it.kcal }} kcal, ${todayFood.sumOf { it.protein }}g protein\n")
-        val byDay = food.filter { it.date != day }.groupBy { it.date }
+        val byDay = if (lite) emptyMap() else food.filter { it.date != day }.groupBy { it.date }
         if (byDay.isNotEmpty()) {
             sb.append("Previous days: ")
             sb.append(byDay.entries.sortedBy { it.key }.joinToString("; ") { (d, l) ->
@@ -649,7 +649,7 @@ ${buildContext()}"""
             }).append("\n")
         }
 
-        val checkIns = life.recentCheckIns(7)
+        val checkIns = life.recentCheckIns(if (lite) 1 else 7)
         if (checkIns.isNotEmpty()) {
             sb.append("\n## Recent check-ins\n")
             checkIns.forEach {
@@ -658,13 +658,13 @@ ${buildContext()}"""
             }
         }
 
-        val logs = life.logsSince(day - 7)
+        val logs = if (lite) emptyList() else life.logsSince(day - 7)
         if (logs.isNotEmpty()) {
             sb.append("\n## Logs (last 7 days)\n")
             logs.takeLast(40).forEach { sb.append("- ${LocalDate.ofEpochDay(it.date)} [${it.category}] ${it.text.take(200)}\n") }
         }
 
-        val pastQuests = game.questsSince(day - 7).filter { it.date < day }
+        val pastQuests = if (lite) emptyList() else game.questsSince(day - 7).filter { it.date < day }
         if (pastQuests.isNotEmpty()) {
             val done = pastQuests.count { it.done }
             sb.append("\n## Quest completion last 7 days: $done/${pastQuests.size}\n")
@@ -673,7 +673,7 @@ ${buildContext()}"""
 
         sb.append("\n## Streak\n${streak()} day(s) (quest EXP x${"%.2f".format(streakMultiplier())})\n")
 
-        val health = fit.healthSince(day - 6)
+        val health = fit.healthSince(if (lite) day else day - 6)
         if (health.isNotEmpty()) {
             sb.append("\n## Health data (from phone/watch)\n")
             health.forEach {
@@ -682,7 +682,7 @@ ${buildContext()}"""
             }
         }
 
-        val sets = fit.setsSince(day - 14)
+        val sets = fit.setsSince(if (lite) day else day - 14)
         if (sets.isNotEmpty()) {
             sb.append("\n## Strength log (last 14 days)\n")
             sets.groupBy { it.date }.toSortedMap().forEach { (d, l) ->
@@ -693,7 +693,7 @@ ${buildContext()}"""
             }
         }
 
-        val body = fit.bodySince(day - 60)
+        val body = fit.bodySince(day - if (lite) 14 else 60)
         if (body.isNotEmpty()) {
             sb.append("\n## Body weight\n")
             body.takeLast(15).forEach { sb.append("- ${LocalDate.ofEpochDay(it.date)}: ${it.weightKg} kg${it.waistCm?.let { w -> ", waist $w cm" } ?: ""}\n") }
@@ -722,7 +722,7 @@ ${buildContext()}"""
             sb.append("\n## This week's boss\n${it.name}: ${it.goal} (${if (it.defeated) "defeated" else "active"})\n")
         }
 
-        val skills = life.skillsNow()
+        val skills = if (lite) emptyList() else life.skillsNow()
         if (skills.isNotEmpty()) {
             sb.append("\n## Skill tree\n")
             skills.take(40).forEach { sb.append("- [${it.status}] ${it.title}${if (it.area.isNotBlank()) " (${it.area})" else ""}\n") }
