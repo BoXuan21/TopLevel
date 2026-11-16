@@ -88,6 +88,9 @@ class Prefs(ctx: Context) {
         "use_calendar" to useCalendar.toString(), "focus_total" to focusTotalMin.toString(),
         "active_title" to activeTitle,
         "ladders" to trackedLadders, "savings_goal" to savingsGoal.toString(),
+        "height_cm" to heightCm.toString(), "age" to age.toString(), "sex" to sex,
+        "activity" to activity.toString(), "body_goal" to bodyGoal, "water_goal" to waterGoal.toString(),
+        "training_level" to trainingLevel.toString(), "equipment" to equipment, "calendar_write" to calendarWrite.toString(),
     )
 
     fun importMap(m: Map<String, String>) {
@@ -104,6 +107,24 @@ class Prefs(ctx: Context) {
         m["active_title"]?.let { activeTitle = it }
         m["ladders"]?.let { trackedLadders = it }
         m["savings_goal"]?.toIntOrNull()?.let { savingsGoal = it }
+        m["height_cm"]?.toIntOrNull()?.let { heightCm = it }
+        m["age"]?.toIntOrNull()?.let { age = it }
+        m["sex"]?.let { sex = it }
+        m["activity"]?.toIntOrNull()?.let { activity = it }
+        m["body_goal"]?.let { bodyGoal = it }
+        m["water_goal"]?.toIntOrNull()?.let { waterGoal = it }
+        m["training_level"]?.toIntOrNull()?.let { trainingLevel = it }
+        m["equipment"]?.let { equipment = it }
+        m["calendar_write"]?.toBooleanStrictOrNull()?.let { calendarWrite = it }
+    }
+
+    object Levels {
+        val trainingLevels = listOf(
+            "Beginner" to "New to training or under 1 year",
+            "Intermediate" to "1–3 years, solid basics",
+            "Advanced" to "3+ years, working on hard skills",
+            "Elite" to "Competing / coaching level",
+        )
     }
 
     /** Calisthenics ladders shown in Train, comma-separated ids. */
@@ -130,6 +151,79 @@ class Prefs(ctx: Context) {
     var onboarded: Boolean
         get() = sp.getBoolean("onboarded", false)
         set(v) = sp.edit().putBoolean("onboarded", v).apply()
+
+    /** Step-by-step setup wizard finished. */
+    var wizardDone: Boolean
+        get() = sp.getBoolean("wizard_done", false)
+        set(v) = sp.edit().putBoolean("wizard_done", v).apply()
+
+    // Body profile (used for the macro calculator)
+    var heightCm: Int
+        get() = sp.getInt("height_cm", 0)
+        set(v) = sp.edit().putInt("height_cm", v).apply()
+    var age: Int
+        get() = sp.getInt("age", 0)
+        set(v) = sp.edit().putInt("age", v).apply()
+    /** "m" or "f" */
+    var sex: String
+        get() = sp.getString("sex", "m") ?: "m"
+        set(v) = sp.edit().putString("sex", v).apply()
+    /** 0 = desk, 1 = light, 2 = active, 3 = very active */
+    var activity: Int
+        get() = sp.getInt("activity", 2)
+        set(v) = sp.edit().putInt("activity", v).apply()
+    /** "cut", "maintain", "bulk" */
+    var bodyGoal: String
+        get() = sp.getString("body_goal", "maintain") ?: "maintain"
+        set(v) = sp.edit().putString("body_goal", v).apply()
+
+    /** Training experience: -1 unknown, 0 beginner, 1 intermediate, 2 advanced, 3 elite. */
+    var trainingLevel: Int
+        get() = sp.getInt("training_level", -1)
+        set(v) = sp.edit().putInt("training_level", v).apply()
+    /** Equipment the user has, comma-separated. */
+    var equipment: String
+        get() = sp.getString("equipment", "") ?: ""
+        set(v) = sp.edit().putString("equipment", v).apply()
+
+    /** The coach may add events to the calendar. Off = calendar is read-only, for appointments. */
+    var calendarWrite: Boolean
+        get() = sp.getBoolean("calendar_write", false)
+        set(v) = sp.edit().putBoolean("calendar_write", v).apply()
+
+    // Phone step sensor (used when Health Connect isn't linked)
+    var stepDay: Long
+        get() = sp.getLong("step_day", -1)
+        set(v) = sp.edit().putLong("step_day", v).apply()
+    /** Sensor total at the start of [stepDay]. */
+    var stepBase: Long
+        get() = sp.getLong("step_base", 0)
+        set(v) = sp.edit().putLong("step_base", v).apply()
+    /** Last sensor total seen. */
+    var stepLast: Long
+        get() = sp.getLong("step_last", 0)
+        set(v) = sp.edit().putLong("step_last", v).apply()
+
+    // Water: glasses (250 ml) per day
+    var waterGoal: Int
+        get() = sp.getInt("water_goal", 10)
+        set(v) = sp.edit().putInt("water_goal", v).apply()
+    fun water(day: Long): Int = if (sp.getLong("water_day", -1) == day) sp.getInt("water_count", 0) else 0
+    fun setWater(day: Long, n: Int) = sp.edit().putLong("water_day", day).putInt("water_count", n.coerceAtLeast(0)).apply()
+
+    // Cached AI advice (JSON) so it isn't re-fetched on every open
+    var adviceJson: String
+        get() = sp.getString("advice_json", "") ?: ""
+        set(v) = sp.edit().putString("advice_json", v).apply()
+    var adviceTs: Long
+        get() = sp.getLong("advice_ts", 0)
+        set(v) = sp.edit().putLong("advice_ts", v).apply()
+    var foodAdvice: String
+        get() = sp.getString("food_advice", "") ?: ""
+        set(v) = sp.edit().putString("food_advice", v).apply()
+    var foodAdviceTs: Long
+        get() = sp.getLong("food_advice_ts", 0)
+        set(v) = sp.edit().putLong("food_advice_ts", v).apply()
 
     val hasKey get() = apiKey.isNotBlank()
 

@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ActivityScenario
@@ -76,7 +77,10 @@ class AppFlowTest {
         repo.db.clearAllTables()
         val p = repo.prefs
         p.onboarded = true
+        p.wizardDone = true
         p.name = "BoXuan"
+        p.adviceJson = ""; p.adviceTs = 0; p.foodAdvice = ""; p.foodAdviceTs = 0
+        p.setWater(day, 4)
         p.apiKey = "sk-ant-demo-not-real"
         p.lastQuestGen = day
         p.lastDiscoverGen = day
@@ -180,7 +184,29 @@ class AppFlowTest {
         File(shotDir, "%02d_%s.png".format(shotNo, name)).outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    private fun tab(label: String) { compose.onAllNodesWithText(label).onFirst().performClick(); settle() }
+    private fun tab(label: String) {
+        dismissPopups()
+        compose.onAllNodes(hasContentDescription(label)).onFirst().performClick(); settle()
+    }
+
+    /** Opens a page from the More menu. */
+    private fun more(entry: String) {
+        tab("More")
+        if (compose.onAllNodes(hasContentDescription("Back")).fetchSemanticsNodes().isNotEmpty()) {
+            compose.onNode(hasContentDescription("Back")).performClick(); settle()
+        }
+        scrollTo(entry)
+        compose.onNodeWithText(entry).performClick(); settle()
+    }
+
+    /** Taps through any "[SYSTEM]" pop-up windows (first tap finishes typing, second closes). */
+    private fun dismissPopups() {
+        repeat(8) {
+            val open = compose.onAllNodesWithText("TAP TO CONTINUE").fetchSemanticsNodes()
+            if (open.isEmpty()) return
+            compose.onAllNodesWithText("TAP TO CONTINUE").onFirst().performClick(); settle(700)
+        }
+    }
 
     private fun scroll(times: Int = 1) {
         repeat(times) { compose.onAllNodes(hasScrollAction()).onFirst().performTouchInput { swipeUp() } }
@@ -205,78 +231,132 @@ class AppFlowTest {
     // ───────────────────────── the walkthrough ─────────────────────────
 
     @Test fun fullWalkthrough() {
-        // STATUS
-        compose.onNodeWithText("BoXuan").assertExists()
-        shot("status")
-        scroll(); shot("status_quests")
-        scroll(2); shot("status_boss_discovery")
+        dismissPopups()
+        // HOME
+        compose.onNodeWithText("BOXUAN").assertExists()
+        shot("home")
+        scroll(); shot("home_quests")
+        scroll(2); shot("home_fuel_report")
 
-        // Completing a quest awards EXP + Gold
+        // Completing a quest awards EXP + Gold and shows the quest pop-up
         val xpBefore = runBlocking { totalXp() }
         val goldBefore = runBlocking { repo.db.vault().goldBalanceNow() }
         scrollTo("Hit 160 g protein")
         compose.onNodeWithText("Hit 160 g protein").performClick()
         waitFor("quest EXP") { totalXp() > xpBefore }
         waitFor("quest Gold") { repo.db.vault().goldBalanceNow() > goldBefore }
-        shot("status_quest_completed")
+        settle(1200); shot("popup_quest_complete")
+        settle(3500) // auto-closes
+
+        // FOOD
+        tab("Food"); shot("food")
+        compose.onNodeWithText("+1 GLASS").performClick(); settle()
+        assertEquals(5, repo.prefs.water(day))
+        scroll(2); shot("food_water_advice")
 
         // TRAIN
         tab("Train")
         shot("train")
         // Log a new PR hold on the current planche stage
-        compose.onAllNodesWithText("Log hold").onFirst().performClick(); settle()
+        compose.onAllNodesWithText("LOG HOLD").onFirst().performClick(); settle()
         compose.onAllNodes(hasSetTextAction() and hasAnyAncestor(isDialog())).onFirst().performTextInput("11")
         shot("train_log_hold_dialog")
         compose.onNode(hasText("Log") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
         waitFor("planche PR 11s") { (repo.db.vault().progressOf("planche")?.bestHoldSec ?: 0) >= 11 }
-        settle(); shot("train_after_pr")
+        settle(); dismissPopups(); shot("train_after_pr")
         scroll(2); shot("train_volume")
         scroll(2); shot("train_progress_chart")
 
-        // LOG
-        tab("Log"); shot("log_food")
-        compose.onNodeWithText("Body").performClick(); settle(); shot("log_body")
-        compose.onNodeWithText("Journal").performClick(); settle(); shot("log_journal")
-        compose.onNodeWithText("Skills").performClick(); settle(); shot("log_skills")
+        // MORE pages
+        tab("More"); shot("more_menu")
+        more("STATUS"); shot("status")
+        scroll(2); shot("status_boss_discovery")
+        more("BODY"); shot("body")
+        more("JOURNAL"); shot("journal")
+        more("SKILL TREE"); shot("skills")
 
         // VAULT: deposit +€10 → pot 350
-        tab("Vault"); shot("vault")
+        more("VAULT"); shot("vault")
         compose.onNodeWithText("+€10").performClick()
         waitFor("pot €350") { repo.db.vault().potNow() >= 349.9f }
-        settle(); scroll(); shot("vault_rewards")
+        settle(); dismissPopups(); scroll(); shot("vault_rewards")
+
+        // SETTINGS
+        more("SETTINGS"); shot("settings")
+        scroll(2); shot("settings_plans")
 
         // COACH
         tab("Coach"); shot("coach")
 
-        // SETUP
-        tab("Status")
-        compose.onNode(hasContentDescription("Setup")).performClick(); settle()
-        shot("setup")
-        scroll(2); shot("setup_plans")
-
         // CHECK-IN dialog
-        tab("Status")
-        scrollTo("Start check-in")
-        compose.onAllNodesWithText("Start check-in").onFirst().performClick(); settle()
+        tab("Home")
+        scrollTo("START CHECK-IN")
+        compose.onAllNodesWithText("START CHECK-IN").onFirst().performClick(); settle()
         shot("checkin")
         compose.onNodeWithText("Cancel").performClick(); settle()
 
-        // LEVEL UP: push XP over the next level
+        // LEVEL UP: push XP over the next level → level-up window
         runBlocking {
             val xp = totalXp()
             val next = Leveling.xpForLevel(Leveling.levelFor(xp) + 1)
             repo.award(Stat.SPIRIT, next - xp + 5, "test:levelup")
         }
-        settle(1500)
+        settle(2500)
         shot("level_up")
         assertTrue(runBlocking { Leveling.levelFor(totalXp()) } > Leveling.levelFor(8000))
     }
 
+    @Test fun setupWizard() {
+        repo.prefs.wizardDone = false
+        scenario.close()
+        scenario = ActivityScenario.launch(MainActivity::class.java); settle(2000)
+        compose.onNodeWithText("ACCEPT").performClick(); settle()
+        compose.onAllNodes(hasSetTextAction()).onFirst().performTextReplacement("Tester")
+        shot("wizard_name")
+        compose.onNodeWithText("NEXT").performClick(); settle()
+        compose.onNodeWithText("◇ Build muscle").performClick(); settle()
+        shot("wizard_goals")
+        compose.onNodeWithText("NEXT").performClick(); settle()
+        // Work & learning
+        compose.onAllNodes(hasSetTextAction())[0].performTextInput("SRE")
+        compose.onAllNodes(hasSetTextAction())[3].performTextInput("CKA certification")
+        shot("wizard_work")
+        compose.onNodeWithText("NEXT").performClick(); settle()
+        assertTrue(runBlocking { repo.life.plansNow() }.any { it.type == PlanType.WORK && "SRE" in it.content })
+        assertTrue(runBlocking { repo.life.plansNow() }.any { it.type == PlanType.LEARNING && "CKA" in it.content })
+        // Level: advanced, has parallettes
+        compose.onNodeWithText("◇ Advanced · 3+ years, working on hard skills").performClick()
+        compose.onNodeWithText("◇ Parallettes").performClick(); settle()
+        shot("wizard_level")
+        compose.onNodeWithText("NEXT").performClick(); settle()
+        assertEquals(2, repo.prefs.trainingLevel)
+        assertTrue("Parallettes" in repo.prefs.equipment)
+        val fields = compose.onAllNodes(hasSetTextAction())
+        fields[0].performTextInput("30"); fields[1].performTextInput("180"); fields[2].performTextInput("80")
+        shot("wizard_body")
+        compose.onNodeWithText("CALCULATE").performClick(); settle()
+        shot("wizard_targets")
+        compose.onNodeWithText("2850 KCAL").assertExists()
+        compose.onNodeWithText("NEXT").performClick(); settle()
+        assertEquals(2850, repo.prefs.kcalGoal)
+        assertEquals(160, repo.prefs.proteinGoal)
+        // API key stays (seeded), rhythm, done
+        compose.onNodeWithText("NEXT").performClick(); settle()
+        compose.onNodeWithText("NEXT").performClick(); settle()
+        shot("wizard_done")
+        compose.onNodeWithText("BEGIN").performClick(); settle(2500)
+        shot("popup_registered")
+        assertTrue(repo.prefs.wizardDone)
+        assertEquals("Tester", repo.prefs.name)
+        assertTrue(runBlocking { repo.life.plansNow() }.any { it.type == PlanType.GOALS && "Build muscle" in it.content })
+    }
+
     @Test fun rewardRedemptionAndSavings() {
-        tab("Vault")
+        dismissPopups()
+        more("VAULT")
         // Rings: enough gold (1240 ≥ 150), pot 340 ≥ 45, cool-down passed → claimable
-        scrollTo("Claim reward ✦")
-        compose.onAllNodesWithText("Claim reward ✦").onFirst().performClick()
+        scrollTo("CLAIM REWARD ✦")
+        compose.onAllNodesWithText("CLAIM REWARD ✦").onFirst().performClick()
         waitFor("rings redeemed") { repo.db.vault().rewardsNow().any { it.name.startsWith("Wooden") && it.redeemedAt != null } }
         settle(); shot("vault_reward_claimed")
         runBlocking {

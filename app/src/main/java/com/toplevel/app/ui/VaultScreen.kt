@@ -65,18 +65,17 @@ fun VaultScreen(vm: AppViewModel) {
     var goalEdit by remember { mutableStateOf(false) }
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Gap) {
-        item { SystemHeader("VAULT") }
 
         item {
             Panel {
                 Row {
                     Column(Modifier.weight(1f)) {
-                        Text("GOLD", color = C.muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Text("GOLD", color = C.muted, fontSize = 10.sp, fontFamily = Fonts.tech)
                         Text("◈ $gold", color = GOLD, fontSize = 30.sp, fontWeight = FontWeight.Black)
                         Text("Earned from quests, training, saving", color = C.muted, fontSize = 11.sp)
                     }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
-                        Text("SAVINGS POT", color = C.muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Text("SAVINGS POT", color = C.muted, fontSize = 10.sp, fontFamily = Fonts.tech)
                         Text("€${"%.0f".format(pot)}", color = C.good, fontSize = 30.sp, fontWeight = FontWeight.Black)
                         Text("Real money set aside", color = C.muted, fontSize = 11.sp)
                     }
@@ -90,7 +89,7 @@ fun VaultScreen(vm: AppViewModel) {
                 val goal = vm.prefs.savingsGoal
                 Row {
                     Text("This month", color = C.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    Text("€${"%.0f".format(month)} / €$goal", color = C.muted, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                    Text("€${"%.0f".format(month)} / €$goal", color = C.muted, fontSize = 12.sp, fontFamily = Fonts.tech,
                         modifier = Modifier.tap { goalEdit = true })
                 }
                 Spacer(Modifier.height(4.dp))
@@ -158,10 +157,10 @@ fun VaultScreen(vm: AppViewModel) {
                 savings.take(30).forEach { s ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(Instant.ofEpochMilli(s.ts).atZone(ZoneId.systemDefault()).format(fmt), color = C.muted,
-                            fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(80.dp))
+                            fontSize = 11.sp, fontFamily = Fonts.tech, modifier = Modifier.width(80.dp))
                         Text(s.note.ifBlank { "Saved" }, color = C.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
                         Text((if (s.amountEur >= 0) "+" else "") + "€${"%.2f".format(s.amountEur)}",
-                            color = if (s.amountEur >= 0) C.good else C.bad, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+                            color = if (s.amountEur >= 0) C.good else C.bad, fontSize = 13.sp, fontFamily = Fonts.tech)
                         if (s.rewardId == null) IconButton(onClick = { vm.deleteSavings(s) }, modifier = Modifier.size(28.dp)) {
                             Icon(Icons.Filled.Delete, "Delete", tint = C.muted)
                         }
@@ -196,7 +195,7 @@ private fun RewardRow(vm: AppViewModel, r: Reward, gold: Int, pot: Float) {
     }
     var confirmDelete by remember { mutableStateOf(false) }
     Column(
-        Modifier.fillMaxWidth().padding(top = 10.dp).clip(RoundedCornerShape(12.dp))
+        Modifier.fillMaxWidth().padding(top = 10.dp).clip(SmallShape)
             .background(C.bg.copy(alpha = 0.5f)).padding(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -206,10 +205,10 @@ private fun RewardRow(vm: AppViewModel, r: Reward, gold: Int, pot: Float) {
             }
         }
         Spacer(Modifier.height(6.dp))
-        Text("◈ Gold  $gold / ${r.goldCost}", color = GOLD, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        Text("◈ Gold  $gold / ${r.goldCost}", color = GOLD, fontSize = 12.sp, fontFamily = Fonts.tech)
         Bar(gold.toFloat() / r.goldCost.coerceAtLeast(1), GOLD)
         Spacer(Modifier.height(4.dp))
-        Text("€ Saved  ${"%.0f".format(pot)} / ${"%.0f".format(r.priceEur)}", color = C.good, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        Text("€ Saved  ${"%.0f".format(pot)} / ${"%.0f".format(r.priceEur)}", color = C.good, fontSize = 12.sp, fontFamily = Fonts.tech)
         Bar(if (r.priceEur > 0) pot / r.priceEur else 1f, C.good)
         val s = st
         if (s != null) {
@@ -342,10 +341,10 @@ private fun SkipDialog(vm: AppViewModel, onClose: () -> Unit) {
 private fun ClaimedOverlay(r: Reward, onClose: () -> Unit) {
     Dialog(onDismissRequest = onClose) {
         Column(
-            Modifier.clip(RoundedCornerShape(16.dp)).background(C.panel).padding(28.dp),
+            Modifier.clip(WindowShape).background(C.panel).padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("[ SYSTEM ]", color = C.accent, fontFamily = FontFamily.Monospace, letterSpacing = 3.sp, fontSize = 12.sp)
+            Text("[ SYSTEM ]", color = C.accent, fontFamily = Fonts.tech, letterSpacing = 3.sp, fontSize = 12.sp)
             Spacer(Modifier.height(10.dp))
             Text("REWARD CLAIMED", color = GOLD, fontSize = 28.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp,
                 textAlign = TextAlign.Center)

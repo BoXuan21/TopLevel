@@ -60,8 +60,18 @@ class Repo private constructor(internal val ctx: Context) {
         val nq = q.copy(done = !q.done)
         game.updateQuest(nq)
         if (nq.done) {
-            award(nq.stat, (nq.xp * streakMultiplier()).toInt(), "quest:${nq.id}")
-            gainGold(maxOf(1, nq.xp / 4), "quest:${nq.id}")
+            val xp = (nq.xp * streakMultiplier()).toInt()
+            val gold = maxOf(1, nq.xp / 4)
+            award(nq.stat, xp, "quest:${nq.id}")
+            gainGold(gold, "quest:${nq.id}")
+            val all = game.questsForNow(q.date)
+            if (all.isNotEmpty() && all.all { it.done }) {
+                SystemEvents.show(Popup(Popup.Kind.CLEAR, "DAILY QUESTS CLEARED",
+                    "Every quest for today is complete.", reward = "+${Rewards.ALL_QUESTS_BONUS} DIS bonus · +$xp ${nq.stat.short} · +$gold Gold"))
+            } else {
+                SystemEvents.show(Popup(Popup.Kind.QUEST, "QUEST COMPLETE", nq.title,
+                    reward = "+$xp ${nq.stat.short} EXP · +$gold Gold"))
+            }
         } else {
             revoke("quest:${nq.id}")
             loseGold("quest:${nq.id}")
@@ -121,10 +131,12 @@ Rules:
 - Follow today's training plan for this weekday exactly; on rest days give a recovery quest.
 - Include the nutrition target as a quest (e.g. hit protein goal).
 - Include one learning quest tied to the user's learning goals and one work/focus quest.
-- Respect calendar events: don't schedule things that clash; mention time windows when useful.
+- Calendar entries are the user's appointments: fixed, never schedule over them; use the free windows between them and mention times when useful.
+- Adapt to what's already done today (steps so far, sets logged, food eaten): don't ask for what's already achieved.
 - Use yesterday's check-in to make one quest address what they wanted to improve.
-- They are an advanced calisthenics athlete (planche / front lever focus) and use the app for tracking. On training days make the strength quest
-  follow THEIR plan for the day with concrete targets at their current ladder stages (e.g. "Planche: 6×5s at current stage + 4×3 PPU"); don't over-coach basics.
+- Match their training level and equipment (## Training profile). On training days make the strength quest follow THEIR plan
+  for the day (it may come from an imported spreadsheet) with concrete targets at their current skill stages
+  (e.g. "Planche: 6×5s at current stage + 4×3 PPU"). Advanced/elite: don't over-coach basics. Beginners: simple, safe, achievable.
 - If they are saving towards rewards, include at most one money quest (no-spend day, move €X to savings, cook instead of ordering) — ideally on 2-3 days per week.
 - xp between 10 and 60 depending on effort.
 - Health data syncs automatically. When a quest is measurable, set "auto" so it completes itself:
@@ -182,15 +194,16 @@ Return: [{"title": "...", "detail": "short how/when", "stat": "STRENGTH", "xp": 
         if (p >= prefs.proteinGoal) award(Stat.VITALITY, Rewards.PROTEIN_HIT, key) else revoke(key)
     }
 
-    data class Macros(val name: String, val kcal: Int, val protein: Int, val carbs: Int, val fat: Int)
+    data class Macros(val name: String, val kcal: Int, val protein: Int, val carbs: Int, val fat: Int, val tip: String = "")
 
     suspend fun estimateFood(description: String): Macros {
         val o = claude.askJson(
             system = "Estimate nutrition for the described food/meal. Use typical portion sizes if unspecified. " +
-                "Return {\"name\": short name, \"kcal\": int, \"protein\": grams int, \"carbs\": grams int, \"fat\": grams int}.",
-            user = description, maxTokens = 300,
+                "User's daily targets: ${prefs.kcalGoal} kcal, ${prefs.proteinGoal} g protein, goal: ${prefs.bodyGoal}. " +
+                foodJsonSpec,
+            user = description, maxTokens = 400,
         ).jsonObject
-        return Macros(str(o, "name") ?: description, int(o, "kcal"), int(o, "protein"), int(o, "carbs"), int(o, "fat"))
+        return macrosOf(o, description)
     }
 
     // ───────────────────────── Logs & skills ─────────────────────────
@@ -291,12 +304,17 @@ Return {"reflection": "...", "tomorrow_quest": {"title": "...", "detail": "...",
         return try {
             val past = life.discoverSince(day - 21).joinToString("\n") { "- ${it.title} — ${it.subtitle}" }
             val o = claude.askJson(
-                system = """You curate a short daily discovery feed for the user.
-1) 3 songs (they listen on YouTube Music) they probably don't know yet but will like, based on their music taste (similar artists/sound, mix of familiar-adjacent and adventurous). Real songs only.
-2) 2 educational videos/talks for their work and learning goals (well-known conference talks, channels or lectures that really exist). Prefer things directly useful this week.
-Never repeat anything from the 'already suggested' list.
-Return {"songs":[{"title":"...","artist":"...","why":"one short line"}],
-        "videos":[{"title":"...","channel":"...","why":"one short line","query":"youtube search query"}]}""",
+                system = """You curate a short daily "learn & grow" feed for the user's whole life, not just sport.
+1) 3 videos/talks for their WORK and LEARNING goals (see Work and Learning plans): well-known conference talks, channels,
+   courses or lectures that really exist, matched to their level and preferred learning style. Prefer what's useful this week
+   (e.g. tied to today's quests or a skill they're learning). At most one may be about training/health.
+2) 2 tools, techniques or resources they could use at work or in life right now (a CLI tool, library, framework, app, method,
+   book or free course that really exists). Each with a concrete first step they can try today in "why".
+3) ${if (life.plansNow().any { it.type == PlanType.MUSIC && it.content.isNotBlank() }) "3 songs (they listen on YouTube Music) they probably don't know yet but will like, based on their music taste. Real songs only." else "No songs (no music taste stored): return an empty songs list."}
+Never repeat anything from the 'already suggested' list. Match the user's language for the "why" lines.
+Return {"videos":[{"title":"...","channel":"...","why":"one short line","query":"youtube search query"}],
+        "tools":[{"name":"...","category":"e.g. CLI tool / book / method","why":"what it helps with + first step","query":"web search query"}],
+        "songs":[{"title":"...","artist":"...","why":"one short line"}]}""",
                 user = buildContext() + "\n\n## Already suggested (don't repeat)\n" + past.ifBlank { "(none)" },
             ).jsonObject
             val items = mutableListOf<DiscoverItem>()
@@ -312,6 +330,11 @@ Return {"songs":[{"title":"...","artist":"...","why":"one short line"}],
                 items += DiscoverItem(date = day, kind = "video", title = t, subtitle = ch,
                     why = str(v, "why").orEmpty(), query = str(v, "query") ?: "$t $ch")
             }
+            o["tools"]?.jsonArray?.mapNotNull { it as? JsonObject }?.forEach { v ->
+                val t = str(v, "name") ?: return@forEach
+                items += DiscoverItem(date = day, kind = "tool", title = t, subtitle = str(v, "category").orEmpty(),
+                    why = str(v, "why").orEmpty(), query = str(v, "query") ?: t)
+            }
             if (items.isNotEmpty()) {
                 life.clearDiscover(day)
                 life.insertDiscover(items)
@@ -323,7 +346,7 @@ Return {"songs":[{"title":"...","artist":"...","why":"one short line"}],
 
     // ───────────────────────── Coach chat with tools ─────────────────────────
 
-    private val chatTools: JsonArray by lazy {
+    private val allChatTools: JsonArray by lazy {
         val stats = "One of STRENGTH, VITALITY, INTELLECT, DISCIPLINE, SPIRIT"
         JsonArray(listOf(
             Claude.tool("update_plan",
@@ -387,6 +410,10 @@ Return {"songs":[{"title":"...","artist":"...","why":"one short line"}],
                 listOf("title", "start", "minutes")),
         ))
     }
+
+    /** The calendar is read-only (appointments) unless the user allowed the coach to add events. */
+    private fun chatTools(): JsonArray = if (prefs.calendarWrite) allChatTools
+        else JsonArray(allChatTools.filter { str(it as? JsonObject, "name") != "add_calendar_event" })
 
     private suspend fun runTool(name: String, input: JsonObject): String = try {
         when (name) {
@@ -472,10 +499,13 @@ Return {"songs":[{"title":"...","artist":"...","why":"one short line"}],
         life.insertChat(ChatMessage(ts = now(), role = "user", content = userText))
         return try {
             val system = """You are the user's personal coach and daily supporter inside TopLevel, their gamified life app.
-You help with training, nutrition, work (they are an SRE), learning, mood and becoming a better person.
+You help with their whole life: work and career (see their Work plan), learning, training, nutrition, money, mood and becoming a better person.
+For work and learning questions give concrete, technical, current answers: tools, commands, resources, videos worth watching.
 Style: direct, warm, practical, no fluff. Short answers on a phone screen unless they ask for depth. Use their data below.
 When the user shares information worth keeping (a plan, a goal, food they ate, something learned, a preference), STORE it with your tools without asking — then mention briefly what you saved.
 If they paste a training or eating plan, save it with update_plan.
+Their calendar holds their appointments: treat them as fixed and plan around them.${if (!prefs.calendarWrite) " You can't add calendar events; suggest times instead." else ""}
+Match their training level and equipment (see Training profile); adapt to what they've already done today (steps, sets, food logged).
 
 ${buildContext()}"""
             val history = life.recentChat(30)
@@ -497,7 +527,7 @@ ${buildContext()}"""
             val actions = mutableListOf<String>()
             var finalText = ""
             for (round in 0 until 6) {
-                val res = claude.send(system, JsonArray(convo), chatTools, maxTokens = 2048)
+                val res = claude.send(system, JsonArray(convo), chatTools(), maxTokens = 2048)
                 val content = res["content"]?.jsonArray ?: JsonArray(emptyList())
                 val text = Claude.textOf(res)
                 if (text.isNotBlank()) finalText = text
@@ -547,12 +577,17 @@ ${buildContext()}"""
             .append(totals.entries.joinToString(", ") { "${it.key.short} ${Leveling.statLevel(it.value)}" }).append("\n")
 
         sb.append("\n## Nutrition goals\n${prefs.kcalGoal} kcal, ${prefs.proteinGoal}g protein, " +
-            "${prefs.carbsGoal}g carbs, ${prefs.fatGoal}g fat per day\n")
+            "${prefs.carbsGoal}g carbs, ${prefs.fatGoal}g fat per day (body goal: ${prefs.bodyGoal})\n")
+
+        sb.append("\n## Training profile\n")
+        sb.append("Level: ${Prefs.Levels.trainingLevels.getOrNull(prefs.trainingLevel)?.let { "${it.first} (${it.second})" } ?: "unknown"}\n")
+        if (prefs.equipment.isNotBlank()) sb.append("Equipment available: ${prefs.equipment}\n")
+        if (prefs.heightCm > 0) sb.append("Body: ${prefs.heightCm} cm, ${prefs.age} y, ${if (prefs.sex == "f") "female" else "male"}\n")
 
         val plans = life.plansNow().filter { it.content.isNotBlank() }
         if (plans.isNotEmpty()) {
             sb.append("\n## Stored plans\n")
-            plans.forEach { sb.append("### ${PlanType.label(it.type)}\n${it.content.take(4000)}\n\n") }
+            plans.forEach { sb.append("### ${PlanType.label(it.type)}\n${it.content.take(if (it.type == PlanType.TRAINING) PlanImport.MAX_CHARS else 4000)}\n\n") }
         }
 
         val mems = life.memoriesNow()
@@ -564,7 +599,7 @@ ${buildContext()}"""
         if (prefs.useCalendar) {
             val evs = CalendarRepo.eventsFor(ctx, today, 2)
             if (evs.isNotEmpty()) {
-                sb.append("\n## Calendar (today + tomorrow)\n")
+                sb.append("\n## Appointments from calendar (today + tomorrow; fixed, plan around them)\n")
                 val df = DateTimeFormatter.ofPattern("EEE")
                 evs.take(25).forEach {
                     val d = java.time.Instant.ofEpochMilli(it.start).atZone(java.time.ZoneId.systemDefault()).toLocalDate()

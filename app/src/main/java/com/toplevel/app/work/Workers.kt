@@ -102,7 +102,8 @@ class EveningWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
 /** Hourly: pull health data and auto-complete quests. */
 class HealthWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
-        HealthSync.sync(Repo.get(applicationContext))
+        val repo = Repo.get(applicationContext)
+        if (HealthSync.sync(repo) != null) com.toplevel.app.health.StepCounter.sync(repo)
         return Result.success()
     }
 }

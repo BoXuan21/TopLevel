@@ -53,6 +53,11 @@ fun SetupScreen(
     var morning by remember { mutableStateOf(p.morningHour.toString()) }
     var evening by remember { mutableStateOf(p.eveningHour.toString()) }
     var useCal by remember { mutableStateOf(p.useCalendar) }
+    var calWrite by remember { mutableStateOf(p.calendarWrite) }
+    var importType by remember { mutableStateOf(PlanType.TRAINING) }
+    val planPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) vm.importPlan(uri, importType) }
     var memText by remember { mutableStateOf("") }
     var confirmRestore by remember { mutableStateOf(false) }
 
@@ -66,7 +71,6 @@ fun SetupScreen(
     )
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Gap) {
-        item { SystemHeader("SETUP") }
 
         item {
             Panel(title = "Player") {
@@ -125,20 +129,40 @@ fun SetupScreen(
                 PlanType.all.forEach { t ->
                     PlanEditor(t, plans.firstOrNull { it.type == t }?.content.orEmpty()) { vm.savePlan(t, it) }
                 }
+                Spacer(Modifier.height(8.dp))
+                Text("Plan in a spreadsheet? Import an Excel (.xlsx) or CSV file.", color = C.muted, fontSize = 13.sp)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GhostButton("Import training plan", enabled = vm.busy == null) {
+                        importType = PlanType.TRAINING; planPicker.launch(planMimeTypes)
+                    }
+                    GhostButton("Import eating plan", enabled = vm.busy == null) {
+                        importType = PlanType.NUTRITION; planPicker.launch(planMimeTypes)
+                    }
+                }
             }
         }
 
         item {
             Panel(title = "Google Calendar") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Use my phone's calendars", color = C.text, modifier = Modifier.weight(1f))
+                    Text("Read my appointments", color = C.text, modifier = Modifier.weight(1f))
                     Switch(
                         checked = useCal,
                         onCheckedChange = { useCal = it; p.useCalendar = it; vm.refreshCalendar() },
                         colors = SwitchDefaults.colors(checkedTrackColor = C.accent),
                     )
                 }
-                Text("Reads the Google Calendar synced on your Fold. The coach can also add workouts/study blocks.",
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Let the coach add events", color = C.text, modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = calWrite,
+                        onCheckedChange = { calWrite = it; p.calendarWrite = it; if (it) requestCalendar() },
+                        colors = SwitchDefaults.colors(checkedTrackColor = C.accent),
+                    )
+                }
+                Text("Your calendar is used for appointments only: quests and advice plan around them. " +
+                    "Holiday and birthday calendars are ignored. The coach only writes to it if you switch that on.",
                     color = C.muted, fontSize = 12.sp)
                 Spacer(Modifier.height(8.dp))
                 GhostButton("Grant calendar access", onClick = requestCalendar)
