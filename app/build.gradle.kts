@@ -78,6 +78,8 @@ dependencies {
     implementation("androidx.health.connect:connect-client:1.1.0-alpha10")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // On-device barcode reading (bundled model, no Play Services needed)
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 

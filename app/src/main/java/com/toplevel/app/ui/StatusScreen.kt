@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -48,61 +49,19 @@ import com.toplevel.app.game.Leveling
 import java.net.URLEncoder
 
 @Composable
-fun StatusScreen(vm: AppViewModel, openSetup: () -> Unit, openCheckIn: () -> Unit) {
-    val quests by vm.quests.collectAsState(initial = emptyList())
+fun StatusScreen(vm: AppViewModel) {
     val totalsList by vm.statTotals.collectAsState(initial = emptyList())
     val discover by vm.discover.collectAsState(initial = emptyList())
-    val checkIn by vm.checkInToday.collectAsState(initial = null)
     val health by vm.healthToday.collectAsState(initial = null)
     val boss by vm.boss.collectAsState(initial = null)
-    val gold by vm.gold.collectAsState(initial = 0)
     var achOpen by remember { mutableStateOf(false) }
     val totals = Leveling.totals(totalsList)
-    val xp = totals.values.sum()
-    val p = Leveling.progress(xp)
-    var addOpen by remember { mutableStateOf(false) }
 
     LazyColumn(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Gap,
     ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) { SystemHeader("STATUS") }
-                IconButton(onClick = openSetup) { Icon(Icons.Filled.Settings, "Setup", tint = C.muted) }
-            }
-        }
-
-        // Player card
-        item {
-            Panel(Modifier.tap { achOpen = true }) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("NAME", color = C.muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                        Text(vm.prefs.name.ifBlank { "Player" }, color = C.text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(4.dp))
-                        Text("TITLE", color = C.muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                        Text(vm.activeTitle.ifBlank { Leveling.title(p.level) }, color = C.accentSoft, fontSize = 14.sp)
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("LEVEL", color = C.muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                        Text("${p.level}", color = C.text, fontSize = 44.sp, fontWeight = FontWeight.Black)
-                        Chip("${Leveling.rank(p.level)}-RANK", C.accent)
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                Bar(p.fraction, C.accent, height = 8)
-                Spacer(Modifier.height(4.dp))
-                Text("EXP ${p.intoLevel} / ${p.levelSpan}   ·   TOTAL $xp   ·   ◈ $gold G",
-                    color = C.muted, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (vm.streak > 0) "🔥 ${vm.streak}-day streak" else "No streak yet — clear 80% of today's quests",
-                        color = if (vm.streak > 0) C.warn else C.muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    if (vm.streak > 0) Chip("EXP ×${"%.2f".format(vm.multiplier)}", C.warn)
-                }
-            }
-        }
+        item { PlayerCard(vm) { achOpen = true } }
 
         // Health
         if (vm.healthConnected && health != null) {
@@ -165,7 +124,7 @@ fun StatusScreen(vm: AppViewModel, openSetup: () -> Unit, openCheckIn: () -> Uni
                     val base = 20 * (lvl - 1) * (lvl - 1)
                     val next = 20 * lvl * lvl
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
-                        Text(s.short, color = C.stat(s), fontFamily = FontFamily.Monospace,
+                        Text(s.short, color = C.stat(s), fontFamily = Fonts.tech,
                             fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.width(40.dp))
                         Bar((sxp - base).toFloat() / (next - base), C.stat(s), Modifier.weight(1f))
                         Text("$lvl", color = C.text, fontWeight = FontWeight.Bold, fontSize = 15.sp,
@@ -182,7 +141,7 @@ fun StatusScreen(vm: AppViewModel, openSetup: () -> Unit, openCheckIn: () -> Uni
                     vm.events.forEach { e ->
                         Row(Modifier.padding(vertical = 3.dp)) {
                             Text(e.timeLabel(), color = C.accentSoft, fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace, modifier = Modifier.width(96.dp))
+                                fontFamily = Fonts.tech, modifier = Modifier.width(96.dp))
                             Text(e.title, color = C.text, fontSize = 14.sp)
                         }
                     }
@@ -190,128 +149,48 @@ fun StatusScreen(vm: AppViewModel, openSetup: () -> Unit, openCheckIn: () -> Uni
             }
         }
 
-        // Quests
-        item {
-            Panel(
-                title = "Daily quests · ${quests.count { it.done }}/${quests.size}",
-                action = {
-                    Row {
-                        IconButton(onClick = { addOpen = true }, modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.Filled.Add, "Add quest", tint = C.accent)
-                        }
-                        IconButton(onClick = { vm.regenerateQuests() }, modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.Filled.Refresh, "Regenerate", tint = C.accent)
-                        }
-                    }
-                },
-            ) {
-                if (quests.isEmpty()) Text("No quests yet. Tap ↻ to generate.", color = C.muted)
-                quests.forEach { q -> QuestRow(q, onToggle = { vm.toggle(q) }, onDelete = { vm.deleteQuest(q) }) }
-                if (quests.isNotEmpty() && quests.all { it.done }) {
-                    Spacer(Modifier.height(8.dp))
-                    SystemNotice("All daily quests cleared. Bonus +40 DIS awarded.")
-                }
-            }
-        }
-
-        // Check-in
-        item {
-            Panel(title = "Evening report") {
-                val c = checkIn
-                if (c == null) {
-                    Text("How was your day? Report in to gain Spirit EXP and get your coach's read on it.",
-                        color = C.muted, fontSize = 14.sp)
-                    Spacer(Modifier.height(10.dp))
-                    GhostButton("Start check-in", onClick = openCheckIn)
-                } else {
-                    Text("Mood ${c.mood}/5 · Energy ${c.energy}/5 · Sleep ${c.sleepHours}h",
-                        color = C.accentSoft, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
-                    if (c.reflection.isNotBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(c.reflection, color = C.text, fontSize = 14.sp, lineHeight = 20.sp)
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    TextButton(onClick = openCheckIn) { Text("Edit check-in", color = C.accent) }
-                }
-            }
-        }
-
-        // Discover
-        item {
-            Panel(
-                title = "Daily discovery",
-                action = {
-                    IconButton(onClick = { vm.regenerateDiscover() }, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Filled.Refresh, "New picks", tint = C.accent)
-                    }
-                },
-            ) {
-                if (discover.isEmpty()) {
-                    Text(
-                        if (vm.prefs.hasKey) "Tap ↻ for today's songs & videos. Add your music taste in Setup for better picks."
-                        else "Add your API key in Setup to unlock daily songs & videos.",
-                        color = C.muted, fontSize = 14.sp,
-                    )
-                }
-                val songs = discover.filter { it.kind == "song" }
-                val videos = discover.filter { it.kind == "video" }
-                if (songs.isNotEmpty()) {
-                    Text("♪ SOUNDTRACK", color = C.stat(Stat.SPIRIT), fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-                    songs.forEach { DiscoverRow(it) }
-                    Spacer(Modifier.height(8.dp))
-                }
-                if (videos.isNotEmpty()) {
-                    Text("▶ TRAINING FOOTAGE", color = C.stat(Stat.INTELLECT), fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-                    videos.forEach { DiscoverRow(it) }
-                }
-            }
-        }
         item { Spacer(Modifier.height(80.dp)) }
     }
 
     if (achOpen) AchievementsDialog(vm) { achOpen = false }
-
-    if (addOpen) AddQuestDialog(onDismiss = { addOpen = false }) { t, s, x ->
-        vm.addQuest(t, s, x); addOpen = false
-    }
 }
 
 @Composable
 fun SystemHeader(title: String) {
     Column {
-        Text("[ SYSTEM ]", color = C.accent, fontSize = 11.sp, fontFamily = FontFamily.Monospace, letterSpacing = 3.sp)
-        Text(title, color = C.text, fontSize = 26.sp, fontWeight = FontWeight.Black, letterSpacing = 4.sp)
+        Text("[ SYSTEM ]", color = C.accent, fontSize = 12.sp, fontFamily = Fonts.tech, fontWeight = FontWeight.Bold,
+            letterSpacing = 4.sp)
+        Text(title, color = Color.White, fontSize = 24.sp, fontFamily = Fonts.display, fontWeight = FontWeight.Black,
+            letterSpacing = 3.sp, style = glowStyle(C.accent, 24f))
     }
 }
 
 @Composable
 fun SystemNotice(text: String) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(C.accent.copy(alpha = 0.12f)).padding(10.dp)
+        Modifier.fillMaxWidth().clip(SmallShape).background(C.accent.copy(alpha = 0.12f)).padding(10.dp)
     ) {
-        Text("! ", color = C.accent, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+        Text("! ", color = C.accent, fontWeight = FontWeight.Black, fontFamily = Fonts.tech)
         Text(text, color = C.accentSoft, fontSize = 13.sp)
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun QuestRow(q: Quest, onToggle: () -> Unit, onDelete: () -> Unit) {
+internal fun QuestRow(q: Quest, onToggle: () -> Unit, onDelete: () -> Unit) {
     var confirm by remember { mutableStateOf(false) }
     Row(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(SmallShape)
             .background(if (q.source == "penalty" && !q.done) C.bad.copy(alpha = 0.15f) else C.bg.copy(alpha = 0.5f))
             .combinedClickable(onClick = onToggle, onLongClick = { confirm = true })
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(22.dp).clip(RoundedCornerShape(5.dp))
+            Modifier.size(22.dp).clip(SmallShape)
                 .background(if (q.done) C.good else C.panel2),
             contentAlignment = Alignment.Center,
         ) { if (q.done) Text("✓", color = C.bg, fontWeight = FontWeight.Black) }
@@ -323,12 +202,12 @@ private fun QuestRow(q: Quest, onToggle: () -> Unit, onDelete: () -> Unit) {
             if (q.autoType.isNotEmpty() && q.target > 0) Text(
                 "⟳ auto · " + when (q.autoType) {
                     "steps" -> "${q.target} steps"; "sleep" -> "${q.target / 60}h${q.target % 60} sleep"; else -> "${q.target} min workout"
-                }, color = C.accent, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                }, color = C.accent, fontSize = 11.sp, fontFamily = Fonts.tech)
         }
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End) {
             Chip(q.stat.short, C.stat(q.stat))
-            Text("+${q.xp}", color = C.accentSoft, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            Text("+${q.xp}", color = C.accentSoft, fontSize = 11.sp, fontFamily = Fonts.tech)
         }
     }
     if (confirm) AlertDialog(
@@ -341,24 +220,62 @@ private fun QuestRow(q: Quest, onToggle: () -> Unit, onDelete: () -> Unit) {
     )
 }
 
+/** Daily learn & grow feed: videos for work/learning, tools to try, songs. */
+@Composable
+fun LearnPanel(vm: AppViewModel) {
+    val discover by vm.discover.collectAsState(initial = emptyList())
+    Panel(
+        title = "Learn & grow",
+        color = C.stat(Stat.INTELLECT),
+        action = {
+            if (vm.prefs.hasKey) IconButton(onClick = { vm.regenerateDiscover() }, modifier = Modifier.size(34.dp)) {
+                Icon(Icons.Filled.Refresh, "New picks", tint = C.accent)
+            }
+        },
+    ) {
+        if (discover.isEmpty()) {
+            Text(
+                if (vm.prefs.hasKey) "Tap ↻ for today's videos and tools for your work and learning goals."
+                else "Add your API key in Settings to get daily videos and tools for your work and learning.",
+                color = C.muted, fontSize = 15.sp,
+            )
+        }
+        listOf(
+            Triple("video", "▶ WATCH", C.stat(Stat.INTELLECT)),
+            Triple("tool", "⚒ TRY AT WORK", C.stat(Stat.DISCIPLINE)),
+            Triple("song", "♪ SOUNDTRACK", C.stat(Stat.SPIRIT)),
+        ).forEach { (kind, label, color) ->
+            val items = discover.filter { it.kind == kind }
+            if (items.isNotEmpty()) {
+                Text(label, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
+                    modifier = Modifier.padding(top = 6.dp))
+                items.forEach { DiscoverRow(it) }
+            }
+        }
+    }
+}
+
 @Composable
 private fun DiscoverRow(d: DiscoverItem) {
     val ctx = LocalContext.current
     val q = URLEncoder.encode(d.query, "UTF-8").replace("+", "%20")
-    val url = if (d.kind == "song") "https://music.youtube.com/search?q=$q"
-    else "https://www.youtube.com/results?search_query=$q"
+    val url = when (d.kind) {
+        "song" -> "https://music.youtube.com/search?q=$q"
+        "tool" -> "https://www.google.com/search?q=$q"
+        else -> "https://www.youtube.com/results?search_query=$q"
+    }
     Column(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(SmallShape)
             .background(C.bg.copy(alpha = 0.5f))
             .tap { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
             .padding(10.dp)
     ) {
-        Text(d.title, color = C.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-        Text(d.subtitle, color = C.accentSoft, fontSize = 12.sp)
-        if (d.why.isNotBlank()) Text(d.why, color = C.muted, fontSize = 12.sp)
+        Text(d.title, color = C.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        if (d.subtitle.isNotBlank()) Text(d.subtitle, color = C.accentSoft, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        if (d.why.isNotBlank()) Text(d.why, color = C.muted, fontSize = 14.sp, lineHeight = 18.sp)
     }
 }
 
@@ -377,11 +294,11 @@ fun AddQuestDialog(onDismiss: () -> Unit, onAdd: (String, Stat, Int) -> Unit) {
                 Field(title, { title = it }, "Quest")
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Stat.entries.forEach { s ->
-                        Box(Modifier.clip(RoundedCornerShape(6.dp))
+                        Box(Modifier.clip(SmallShape)
                             .background(if (s == stat) C.stat(s).copy(alpha = 0.3f) else C.bg)
                             .tap { stat = s }
                             .padding(horizontal = 6.dp, vertical = 4.dp)) {
-                            Text(s.short, color = C.stat(s), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                            Text(s.short, color = C.stat(s), fontSize = 11.sp, fontFamily = Fonts.tech)
                         }
                     }
                 }
@@ -399,8 +316,8 @@ fun AddQuestDialog(onDismiss: () -> Unit, onAdd: (String, Stat, Int) -> Unit) {
 
 @Composable
 private fun Vital(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(modifier.clip(RoundedCornerShape(10.dp)).background(C.bg.copy(alpha = 0.5f)).padding(10.dp)) {
-        Text(label, color = C.muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+    Column(modifier.clip(SmallShape).background(C.bg.copy(alpha = 0.5f)).padding(10.dp)) {
+        Text(label, color = C.muted, fontSize = 10.sp, fontFamily = Fonts.tech)
         Text(value, color = C.text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
     }
 }
@@ -421,7 +338,7 @@ private fun FocusPanel(vm: AppViewModel) {
             val left = (vm.focusEnd - now) / 1000
             val total = vm.prefs.focusLen * 60f
             Text("%02d:%02d".format(left / 60, left % 60), color = C.text, fontSize = 40.sp,
-                fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+                fontWeight = FontWeight.Black, fontFamily = Fonts.tech)
             Bar(1f - left / total, C.stat(Stat.DISCIPLINE), height = 8)
             Spacer(Modifier.height(8.dp))
             Text("Phone down. Deep work. +${vm.prefs.focusLen / 2} DIS when done.", color = C.muted, fontSize = 12.sp)
@@ -454,7 +371,7 @@ fun AchievementsDialog(vm: AppViewModel, onClose: () -> Unit) {
                         val got = a.id in ids
                         val wearing = vm.activeTitle == a.title
                         Column(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                            Modifier.fillMaxWidth().clip(SmallShape)
                                 .background(if (wearing) C.accent.copy(alpha = 0.2f) else C.bg.copy(alpha = 0.5f))
                                 .tap { if (got) vm.setTitle(if (wearing) "" else a.title) }
                                 .padding(10.dp)

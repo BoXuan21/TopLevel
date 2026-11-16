@@ -41,6 +41,15 @@ object CalendarRepo {
     fun canWrite(ctx: Context) =
         ContextCompat.checkSelfPermission(ctx, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED
 
+    /** Holiday, birthday and week-number calendars aren't appointments. */
+    fun isNotAppointment(calendarName: String, owner: String): Boolean {
+        val o = owner.lowercase(); val n = calendarName.lowercase()
+        return "#holiday" in o || "#contacts" in o || "#weeknum" in o ||
+            listOf("holiday", "feiertag", "birthday", "geburtstag", "week number", "kalenderwoche", "ferien")
+                .any { it in n }
+    }
+
+    /** Appointments (events from your own calendars) for [days] days from [day]. */
     fun eventsFor(ctx: Context, day: LocalDate, days: Int = 1): List<CalEvent> {
         if (!canRead(ctx)) return emptyList()
         val z = ZoneId.systemDefault()
@@ -55,12 +64,14 @@ object CalendarRepo {
             CalendarContract.Instances.END,
             CalendarContract.Instances.ALL_DAY,
             CalendarContract.Instances.CALENDAR_DISPLAY_NAME,
+            CalendarContract.Instances.OWNER_ACCOUNT,
         )
         val out = mutableListOf<CalEvent>()
         try {
             ctx.contentResolver.query(builder.build(), proj, null, null,
                 CalendarContract.Instances.BEGIN + " ASC")?.use { c ->
                 while (c.moveToNext()) {
+                    if (isNotAppointment(c.getString(4) ?: "", c.getString(5) ?: "")) continue
                     out += CalEvent(
                         title = c.getString(0) ?: "(no title)",
                         start = c.getLong(1),

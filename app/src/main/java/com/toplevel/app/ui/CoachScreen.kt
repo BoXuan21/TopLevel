@@ -84,7 +84,7 @@ fun CoachScreen(vm: AppViewModel) {
                             lineHeight = 20.sp,
                             modifier = Modifier
                                 .widthIn(max = 520.dp)
-                                .clip(RoundedCornerShape(14.dp))
+                                .clip(SmallShape)
                                 .background(if (mine) C.accent else C.panel2)
                                 .padding(12.dp),
                         )
@@ -92,7 +92,7 @@ fun CoachScreen(vm: AppViewModel) {
                 }
             }
             if (vm.busy != null) item {
-                Text("▍ ${vm.busy}", color = C.accent, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                Text("▍ ${vm.busy}", color = C.accent, fontFamily = Fonts.tech, fontSize = 12.sp)
             }
         }
         Row(

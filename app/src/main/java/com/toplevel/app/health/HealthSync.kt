@@ -80,21 +80,25 @@ object HealthSync {
                 workoutNames, System.currentTimeMillis()))
             if (weight != null) repo.logBody(weight.toFloat(), source = "health")
 
-            // Auto-complete measurable quests
-            repo.game.questsForNow(day).filter { !it.done && it.autoType.isNotEmpty() }.forEach { q ->
-                val reached = when (q.autoType) {
-                    "steps" -> steps >= q.target
-                    "sleep" -> sleepMin >= q.target
-                    "workout" -> workoutMin >= q.target
-                    else -> false
-                }
-                if (reached && q.target > 0) repo.toggleQuest(q.id)
-            }
+            autoComplete(repo, day, steps, sleepMin, workoutMin)
             repo.checkAchievements()
             Widgets.refresh(ctx)
             null
         } catch (e: Exception) {
             e.message ?: "Health sync failed"
+        }
+    }
+
+    /** Completes measurable quests ("8,000 steps", "7 h sleep", "45 min workout") once reached. */
+    suspend fun autoComplete(repo: Repo, day: Long, steps: Long, sleepMin: Long, workoutMin: Long) {
+        repo.game.questsForNow(day).filter { !it.done && it.autoType.isNotEmpty() }.forEach { q ->
+            val reached = when (q.autoType) {
+                "steps" -> steps >= q.target
+                "sleep" -> sleepMin >= q.target
+                "workout" -> workoutMin >= q.target
+                else -> false
+            }
+            if (reached && q.target > 0) repo.toggleQuest(q.id)
         }
     }
 }

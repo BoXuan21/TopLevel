@@ -104,13 +104,13 @@ private fun Scale(label: String, value: Int, onChange: (Int) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         (1..5).forEach { i ->
             Box(
-                Modifier.size(44.dp).clip(RoundedCornerShape(10.dp))
+                Modifier.size(44.dp).clip(SmallShape)
                     .background(if (i <= value) C.accent.copy(alpha = 0.25f + i * 0.12f) else C.bg)
                     .tap { onChange(i) },
                 contentAlignment = Alignment.Center,
             ) {
                 Text("$i", color = if (i <= value) C.text else C.muted,
-                    fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    fontWeight = FontWeight.Bold, fontFamily = Fonts.tech)
             }
         }
     }

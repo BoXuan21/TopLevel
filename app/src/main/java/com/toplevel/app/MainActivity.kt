@@ -8,43 +8,25 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.width
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Face
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -56,27 +38,36 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.toplevel.app.data.Popup
+import com.toplevel.app.data.SystemEvents
 import com.toplevel.app.game.Leveling
 import com.toplevel.app.ui.AppViewModel
 import com.toplevel.app.ui.C
 import com.toplevel.app.ui.CheckInDialog
 import com.toplevel.app.ui.CoachScreen
-import com.toplevel.app.ui.LogScreen
-import com.toplevel.app.ui.SetupScreen
-import com.toplevel.app.ui.TrainScreen
-import com.toplevel.app.ui.VaultScreen
-import com.toplevel.app.ui.StatusScreen
+import com.toplevel.app.ui.FoodScreen
+import com.toplevel.app.ui.Fonts
+import com.toplevel.app.ui.HomeScreen
+import com.toplevel.app.ui.MoreScreen
+import com.toplevel.app.ui.OnboardingScreen
+import com.toplevel.app.ui.PopupHost
+import com.toplevel.app.ui.SystemBackground
 import com.toplevel.app.ui.TopLevelTheme
+import com.toplevel.app.ui.TrainScreen
+import com.toplevel.app.ui.glow
+import com.toplevel.app.ui.glowStyle
 import com.toplevel.app.ui.tap
 
 class MainActivity : ComponentActivity() {
@@ -86,7 +77,7 @@ class MainActivity : ComponentActivity() {
 
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { vm.refreshCalendar() }
+    ) { vm.refreshCalendar(); vm.syncSteps() }
 
     private val healthLauncher = registerForActivityResult(
         androidx.health.connect.client.PermissionController.createRequestPermissionResultContract()
@@ -121,21 +112,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestPerms() {
-        permLauncher.launch(arrayOf(
+        // Calendar is read for appointments; write access only if the coach may add events
+        permLauncher.launch(listOfNotNull(
             Manifest.permission.READ_CALENDAR,
-            Manifest.permission.WRITE_CALENDAR,
+            Manifest.permission.WRITE_CALENDAR.takeIf { vm.prefs.calendarWrite },
             Manifest.permission.POST_NOTIFICATIONS,
-        ))
+            Manifest.permission.ACTIVITY_RECOGNITION,
+        ).toTypedArray())
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         openTarget = intent?.getStringExtra("open")
-        if (!vm.prefs.onboarded) {
-            vm.prefs.onboarded = true
-            requestPerms()
-        }
         setContent {
             TopLevelTheme {
                 Root(vm, openTarget, { openTarget = null },
@@ -162,35 +151,34 @@ class Actions(
     val restore: () -> Unit,
 )
 
-private data class Tab(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
+private data class Tab(val label: String, val icon: String)
 
 private val tabs = listOf(
-    Tab("Status", Icons.Filled.Home),
-    Tab("Train", Icons.Filled.Star),
-    Tab("Log", Icons.Filled.List),
-    Tab("Vault", Icons.Filled.Lock),
-    Tab("Coach", Icons.Filled.Face),
+    Tab("Home", "◆"),
+    Tab("Food", "◈"),
+    Tab("Train", "⚔"),
+    Tab("Coach", "◎"),
+    Tab("More", "☰"),
 )
-private const val COACH = 4
-private const val SETUP = 5
+private const val HOME = 0
+private const val FOOD = 1
+private const val COACH = 3
+private const val MORE = 4
 
 @Composable
 private fun Root(vm: AppViewModel, openTarget: String?, consumeTarget: () -> Unit, actions: Actions) {
-    var tab by remember { mutableIntStateOf(if (!vm.prefs.hasKey) SETUP else 0) }
+    var tab by rememberSaveable { mutableIntStateOf(HOME) }
+    var morePage by rememberSaveable { mutableStateOf<String?>(null) }
     var checkIn by remember { mutableStateOf(false) }
     val snack = remember { SnackbarHostState() }
     val totals by vm.statTotals.collectAsState(initial = null)
-    var levelUp by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(openTarget) {
         when (openTarget) {
-            "checkin" -> { tab = 0; checkIn = true }
-            "status" -> tab = 0
+            "checkin" -> { tab = HOME; checkIn = true }
+            "status" -> tab = HOME
         }
         if (openTarget != null) consumeTarget()
-    }
-    LaunchedEffect(Unit) {
-        com.toplevel.app.data.SystemEvents.flow.collect { snack.showSnackbar("[SYSTEM] $it") }
     }
     LaunchedEffect(vm.message) {
         vm.message?.let { snack.showSnackbar(it); vm.message = null }
@@ -198,101 +186,91 @@ private fun Root(vm: AppViewModel, openTarget: String?, consumeTarget: () -> Uni
     LaunchedEffect(totals) {
         val t = totals ?: return@LaunchedEffect
         val level = Leveling.levelFor(Leveling.totals(t).values.sum())
-        if (level > vm.prefs.lastSeenLevel) levelUp = level
+        if (level > vm.prefs.lastSeenLevel && vm.wizardDone) {
+            SystemEvents.show(Popup(Popup.Kind.LEVEL_UP, "NOTIFICATION", "LV ${level - 1}  →  LV $level",
+                lines = listOf("All stats recovered", "Rank ${Leveling.rank(level)} · ${Leveling.title(level)}"),
+                reward = "Keep going, Player."))
+        }
         if (level != vm.prefs.lastSeenLevel) vm.prefs.lastSeenLevel = level
     }
 
-    Box(Modifier.fillMaxSize()) {
-    Scaffold(
-        containerColor = C.bg,
-        snackbarHost = { SnackbarHost(snack) },
-        bottomBar = {
-            NavigationBar(containerColor = C.panel) {
-                tabs.forEachIndexed { i, t ->
-                    NavigationBarItem(
-                        selected = tab == i,
-                        onClick = { tab = i },
-                        icon = { Icon(t.icon, t.label) },
-                        label = { Text(t.label, fontSize = 11.sp) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = C.accent,
-                            selectedTextColor = C.accent,
-                            indicatorColor = C.accent.copy(alpha = 0.15f),
-                            unselectedIconColor = C.muted,
-                            unselectedTextColor = C.muted,
-                        ),
-                    )
-                }
-            }
-        },
-    ) { pad ->
-        val wide = LocalConfiguration.current.screenWidthDp >= 600
-        Box(Modifier.fillMaxSize().padding(pad)) {
-            Row(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(1f)) {
-                    when (tab) {
-                        0 -> StatusScreen(vm, openSetup = { tab = SETUP }) { checkIn = true }
-                        1 -> TrainScreen(vm)
-                        2 -> LogScreen(vm)
-                        3 -> VaultScreen(vm)
-                        COACH -> CoachScreen(vm)
-                        else -> SetupScreen(vm, actions.requestPerms, actions.connectHealth, actions.backup, actions.restore)
+    Box(Modifier.fillMaxSize().background(C.bg)) {
+        SystemBackground()
+
+        if (!vm.wizardDone) {
+            OnboardingScreen(vm, actions)
+        } else Scaffold(
+            containerColor = Color.Transparent,
+            snackbarHost = { SnackbarHost(snack) },
+            bottomBar = { NavBar(tab) { if (it == tab && it == MORE) morePage = null; tab = it } },
+        ) { pad ->
+            val wide = LocalConfiguration.current.screenWidthDp >= 600
+            Box(Modifier.fillMaxSize().padding(pad)) {
+                Row(Modifier.fillMaxSize()) {
+                    Box(Modifier.weight(1f)) {
+                        AnimatedContent(tab, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(120)) }, label = "tab") { t ->
+                            when (t) {
+                                HOME -> HomeScreen(vm, openFood = { tab = FOOD }, openCheckIn = { checkIn = true },
+                                    openStatus = { tab = MORE; morePage = "status" })
+                                FOOD -> FoodScreen(vm)
+                                2 -> TrainScreen(vm)
+                                COACH -> CoachScreen(vm)
+                                else -> MoreScreen(vm, actions, morePage) { morePage = it }
+                            }
+                        }
+                    }
+                    // Fold unfolded: coach always open on the right
+                    if (wide && tab != COACH) {
+                        Box(Modifier.width(1.dp).fillMaxHeight()
+                            .background(Brush.verticalGradient(listOf(Color.Transparent, C.accent.copy(alpha = 0.6f), Color.Transparent))))
+                        Box(Modifier.weight(0.85f)) { CoachScreen(vm) }
                     }
                 }
-                // Fold unfolded: coach always open on the right
-                if (wide && tab != COACH) {
-                    Box(Modifier.width(1.dp).fillMaxHeight().background(C.border))
-                    Box(Modifier.weight(0.85f)) { CoachScreen(vm) }
-                }
-            }
-            if (vm.busy != null && tab != COACH) {
-                Column(Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth(), color = C.accent, trackColor = C.bg)
-                    Text("[ SYSTEM ] ${vm.busy}", color = C.accent, fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.background(C.bg.copy(alpha = 0.85f)).padding(horizontal = 16.dp, vertical = 4.dp))
+                if (vm.busy != null && tab != COACH) {
+                    Column(Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth(), color = C.accent, trackColor = C.bg)
+                        Text("[ SYSTEM ] ${vm.busy}", color = C.accent, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.background(C.bg.copy(alpha = 0.85f)).padding(horizontal = 16.dp, vertical = 4.dp))
+                    }
                 }
             }
         }
-    }
 
-    if (checkIn) CheckInDialog(vm) { checkIn = false }
+        if (checkIn) CheckInDialog(vm) { checkIn = false }
 
-    AnimatedVisibility(visible = levelUp != null, enter = fadeIn() + scaleIn(initialScale = 0.8f), exit = fadeOut()) {
-        LevelUpOverlay(levelUp ?: 1) { levelUp = null }
-    }
+        PopupHost()
     }
 }
 
 @Composable
-private fun LevelUpOverlay(level: Int, onDismiss: () -> Unit) {
-    val pulse = rememberInfiniteTransition(label = "pulse")
-    val glow by pulse.animateFloat(0.4f, 1f,
-        infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "glow")
-    Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.85f)).safeDrawingPadding().tap(onDismiss),
-        contentAlignment = Alignment.Center,
+private fun NavBar(selected: Int, onSelect: (Int) -> Unit) {
+    Column(
+        Modifier.fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(C.panel.copy(alpha = 0.92f), C.bg)))
+            .navigationBarsPadding()
     ) {
-        Column(
-            Modifier
-                .padding(32.dp)
-                .border(2.dp, C.accent.copy(alpha = glow), RoundedCornerShape(16.dp))
-                .background(C.panel, RoundedCornerShape(16.dp))
-                .padding(28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text("[ SYSTEM ]", color = C.accent, fontFamily = FontFamily.Monospace, letterSpacing = 3.sp, fontSize = 12.sp)
-            Spacer(Modifier.height(12.dp))
-            Text("LEVEL UP", color = C.text.copy(alpha = 0.5f + glow / 2), fontSize = 38.sp,
-                fontWeight = FontWeight.Black, letterSpacing = 6.sp)
-            Spacer(Modifier.height(8.dp))
-            Text("LV ${level - 1}  →  LV $level", color = C.accentSoft, fontSize = 18.sp,
-                fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
-            Text("Rank ${Leveling.rank(level)} · ${Leveling.title(level)}", color = C.muted, fontSize = 14.sp)
-            Spacer(Modifier.height(20.dp))
-            Text("Tap to continue", color = C.muted, fontSize = 12.sp, textAlign = TextAlign.Center,
-                modifier = Modifier.alpha(glow))
+        Box(Modifier.fillMaxWidth().height(1.dp)
+            .background(Brush.horizontalGradient(listOf(Color.Transparent, C.accent.copy(alpha = 0.7f), Color.Transparent))))
+        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+            tabs.forEachIndexed { i, t ->
+                val on = i == selected
+                Column(
+                    Modifier.weight(1f).tap { onSelect(i) }.padding(vertical = 4.dp)
+                        .semantics { contentDescription = t.label },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Box(
+                        Modifier.width(26.dp).height(2.dp)
+                            .then(if (on) Modifier.glow(C.accent, androidx.compose.ui.graphics.RectangleShape, radius = 8.dp, strength = 1f) else Modifier)
+                            .background(if (on) C.accent else Color.Transparent)
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(t.icon, color = if (on) Color.White else C.muted, fontSize = 20.sp,
+                        style = if (on) glowStyle(C.accent, 16f) else glowStyle(Color.Transparent, 0f))
+                    Text(t.label.uppercase(), color = if (on) C.accent else C.muted, fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp, fontFamily = Fonts.body)
+                }
+            }
         }
     }
 }
