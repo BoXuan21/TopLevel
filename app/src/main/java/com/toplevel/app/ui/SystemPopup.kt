@@ -97,6 +97,7 @@ private fun SystemWindow(p: Popup, onDone: () -> Unit) {
     var closing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     val autoClose = p.auto
     val sparks = remember {
         val rnd = Random(p.hashCode())
@@ -116,6 +117,7 @@ private fun SystemWindow(p: Popup, onDone: () -> Unit) {
 
     LaunchedEffect(Unit) {
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        com.toplevel.app.audio.Sound.play(ctx, com.toplevel.app.audio.Sound.forPopup(p.kind))
         launch { scrim.animateTo(1f, tween(220)) }
         line.animateTo(1f, tween(230, easing = FastOutSlowInEasing))
         launch { open.animateTo(1f, spring(dampingRatio = 0.62f, stiffness = 320f)) }
