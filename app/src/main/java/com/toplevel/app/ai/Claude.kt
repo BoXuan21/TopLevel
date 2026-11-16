@@ -42,6 +42,7 @@ class Claude(private val prefs: Prefs) {
         maxTokens: Int = 2048,
         small: Boolean = false,
         cache: Boolean = false,
+        toolChoice: JsonObject? = null,
     ): JsonObject = withContext(Dispatchers.IO) {
         if (!prefs.hasKey) throw ClaudeException("Add your Anthropic API key in Setup first.")
         val body = buildJsonObject {
@@ -59,6 +60,7 @@ class Claude(private val prefs: Prefs) {
             } else put("system", system)
             put("messages", messages)
             if (tools != null) put("tools", tools)
+            if (toolChoice != null) put("tool_choice", toolChoice)
         }
         val req = Request.Builder()
             .url("https://api.anthropic.com/v1/messages")
@@ -86,26 +88,84 @@ class Claude(private val prefs: Prefs) {
         return textOf(res)
     }
 
-    /** One-shot answer parsed as JSON (tolerates code fences / chatter). */
-    suspend fun askJson(system: String, user: String, maxTokens: Int = 2000, small: Boolean = false): JsonElement {
-        val txt = ask("$system\n\nRespond with JSON only. No prose, no code fences.", user, maxTokens, small)
-        return extractJson(txt) ?: throw ClaudeException("Claude didn't return valid JSON.")
+    /** One-shot answer parsed as JSON. */
+    suspend fun askJson(system: String, user: String, maxTokens: Int = 2000, small: Boolean = false): JsonElement =
+        sendJson(system, buildJsonArray { add(userMsg(user)) }, maxTokens, small)
+
+    /**
+     * Structured answer. Claude is forced to call the `answer` tool, so the API hands back
+     * parsed JSON instead of free text. If the answer was cut off (token limit) or unreadable,
+     * retry with a bigger budget before giving up.
+     */
+    suspend fun sendJson(system: String, messages: JsonArray, maxTokens: Int = 2000, small: Boolean = false): JsonElement {
+        var budget = maxOf(maxTokens, MIN_JSON_TOKENS)
+        repeat(3) {
+            val res = send(
+                "$system\n\nGive your answer by calling the `answer` tool, with the JSON in `data`.",
+                messages, JsonArray(listOf(ANSWER_TOOL)), budget, small, toolChoice = FORCE_ANSWER,
+            )
+            parseAnswer(res)?.let { return it }
+            if (str(res, "stop_reason") == "max_tokens") budget = (budget * 2).coerceAtMost(8000)
+        }
+        throw ClaudeException("Claude didn't return valid JSON. Try again.")
     }
 
-    fun extractJson(txt: String): JsonElement? {
-        val t = txt.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
-        try { return json.parseToJsonElement(t) } catch (_: Exception) { }
-        val starts = listOf(t.indexOf('{'), t.indexOf('[')).filter { it >= 0 }
-        if (starts.isEmpty()) return null
-        val s = starts.min()
-        val e = maxOf(t.lastIndexOf('}'), t.lastIndexOf(']'))
-        if (e <= s) return null
-        return try { json.parseToJsonElement(t.substring(s, e + 1)) } catch (_: Exception) { null }
-    }
+    fun extractJson(txt: String): JsonElement? = extractJsonText(txt)
 
     companion object {
         /** Fast, cheap model for small structured jobs. */
         const val SMALL_MODEL = "claude-haiku-5-5"
+
+        /** Tight budgets were the main cause of cut-off (= invalid) JSON. */
+        const val MIN_JSON_TOKENS = 800
+
+        private val lenient = Json { ignoreUnknownKeys = true; isLenient = true }
+
+        val ANSWER_TOOL = buildJsonObject {
+            put("name", "answer")
+            put("description", "Return the answer. `data` holds the complete JSON answer (object or array) in exactly the shape the instructions ask for.")
+            put("input_schema", buildJsonObject {
+                put("type", "object")
+                put("properties", buildJsonObject {
+                    put("data", buildJsonObject { put("description", "The JSON answer (object or array).") })
+                })
+                put("required", JsonArray(listOf(JsonPrimitive("data"))))
+            })
+        }
+
+        val FORCE_ANSWER = buildJsonObject { put("type", "tool"); put("name", "answer") }
+
+        /** Pull the JSON answer out of a response: the `answer` tool input first, then any JSON in the text. */
+        fun parseAnswer(res: JsonObject): JsonElement? {
+            val blocks = res["content"] as? JsonArray ?: return null
+            val input = blocks.mapNotNull { it as? JsonObject }
+                .firstOrNull { str(it, "type") == "tool_use" }?.get("input") as? JsonObject
+            if (input != null) {
+                val data = input["data"]
+                when {
+                    data is JsonObject || data is JsonArray -> return data
+                    data is JsonPrimitive && data.isString -> extractJsonText(data.content)?.let { return it }
+                    data == null && input.isNotEmpty() -> return input // model put the fields at top level
+                }
+            }
+            return extractJsonText(textOf(res))
+        }
+
+        /** Tolerates code fences and chatter around the JSON. */
+        fun extractJsonText(txt: String): JsonElement? {
+            val t = txt.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            if (t.isEmpty()) return null
+            try { return lenient.parseToJsonElement(t) } catch (_: Exception) { }
+            val starts = listOf(t.indexOf('{'), t.indexOf('[')).filter { it >= 0 }
+            if (starts.isEmpty()) return null
+            val s = starts.min()
+            val e = maxOf(t.lastIndexOf('}'), t.lastIndexOf(']'))
+            if (e <= s) return null
+            val cut = t.substring(s, e + 1)
+            try { return lenient.parseToJsonElement(cut) } catch (_: Exception) { }
+            // Common slip: trailing commas before } or ]
+            return try { lenient.parseToJsonElement(cut.replace(Regex(",\\s*([}\\]])"), "$1")) } catch (_: Exception) { null }
+        }
 
         fun userMsg(text: String) = buildJsonObject {
             put("role", "user")

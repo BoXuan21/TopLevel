@@ -48,13 +48,12 @@ suspend fun Repo.estimateFoodPhoto(jpegBase64: String, note: String): Repo.Macro
         })
     }
     val goals = "User's daily targets: ${prefs.kcalGoal} kcal, ${prefs.proteinGoal} g protein, goal: ${prefs.bodyGoal}."
-    val res = claude.send(
+    val o = claude.sendJson(
         "Identify the food in the photo and estimate the whole visible portion. If the photo shows a nutrition label " +
             "or packaging, read the exact printed values and scale them to the portion in my note (or one serving). " +
-            "$goals $FOOD_JSON\nRespond with JSON only.",
+            "$goals $FOOD_JSON",
         buildJsonArray { add(msg) }, maxTokens = 300, small = true,
-    )
-    val o = claude.extractJson(Claude.textOf(res))?.jsonObject ?: throw ClaudeException("Couldn't read that photo.")
+    ) as? JsonObject ?: throw ClaudeException("Couldn't read that photo.")
     return macrosOf(o, "Meal (photo)")
 }
 

@@ -183,4 +183,20 @@ class LogicTest {
         assertEquals(mon, G.weekKey(mon + 6))
         assertEquals(mon + 7, G.weekKey(mon + 7))
     }
+
+    @Test fun claudeJsonAnswers() {
+        val C = com.toplevel.app.ai.Claude.Companion
+        val js = kotlinx.serialization.json.Json
+        fun res(s: String) = js.parseToJsonElement(s) as kotlinx.serialization.json.JsonObject
+        // forced tool call: object, array, stringified, fields at top level
+        assertEquals("1", C.parseAnswer(res("""{"content":[{"type":"tool_use","input":{"data":{"a":1}}}]}"""))
+            .toString().filter { it.isDigit() })
+        assertTrue(C.parseAnswer(res("""{"content":[{"type":"tool_use","input":{"data":[1,2]}}]}""")) is kotlinx.serialization.json.JsonArray)
+        assertNotNull(C.parseAnswer(res("""{"content":[{"type":"tool_use","input":{"data":"{\"a\":1}"}}]}""")))
+        assertNotNull(C.parseAnswer(res("""{"content":[{"type":"tool_use","input":{"kcal":300}}]}""")))
+        // plain text fallbacks: fences, chatter, trailing commas
+        assertNotNull(C.extractJsonText("```json\n{\"a\":1}\n```"))
+        assertNotNull(C.extractJsonText("Sure! Here it is: {\"a\":[1,2,],} hope that helps"))
+        assertNull(C.extractJsonText("{\"a\":1, \"b\":")) // truncated -> retry
+    }
 }
