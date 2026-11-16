@@ -62,6 +62,24 @@ fun StatusScreen(vm: AppViewModel) {
         verticalArrangement = Gap,
     ) {
         item { PlayerCard(vm) { achOpen = true } }
+        // Stats
+        item {
+            Panel(title = "Stats") {
+                Stat.entries.forEach { s ->
+                    val sxp = totals[s] ?: 0
+                    val lvl = Leveling.statLevel(sxp)
+                    val base = 20 * (lvl - 1) * (lvl - 1)
+                    val next = 20 * lvl * lvl
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+                        Text(s.short, color = C.stat(s), fontFamily = Fonts.tech,
+                            fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.width(40.dp))
+                        Bar((sxp - base).toFloat() / (next - base), C.stat(s), Modifier.weight(1f))
+                        Text("$lvl", color = C.text, fontWeight = FontWeight.Bold, fontSize = 15.sp,
+                            modifier = Modifier.width(36.dp).padding(start = 10.dp))
+                    }
+                }
+            }
+        }
 
         // Health
         if (vm.healthConnected && health != null) {
@@ -110,25 +128,6 @@ fun StatusScreen(vm: AppViewModel) {
                             Text(if (showReport) "Hide last week's report" else "Last week's report", color = C.accent)
                         }
                         if (showReport) Text(b.report, color = C.text, fontSize = 13.sp, lineHeight = 19.sp)
-                    }
-                }
-            }
-        }
-
-        // Stats
-        item {
-            Panel(title = "Stats") {
-                Stat.entries.forEach { s ->
-                    val sxp = totals[s] ?: 0
-                    val lvl = Leveling.statLevel(sxp)
-                    val base = 20 * (lvl - 1) * (lvl - 1)
-                    val next = 20 * lvl * lvl
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
-                        Text(s.short, color = C.stat(s), fontFamily = Fonts.tech,
-                            fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.width(40.dp))
-                        Bar((sxp - base).toFloat() / (next - base), C.stat(s), Modifier.weight(1f))
-                        Text("$lvl", color = C.text, fontWeight = FontWeight.Bold, fontSize = 15.sp,
-                            modifier = Modifier.width(36.dp).padding(start = 10.dp))
                     }
                 }
             }

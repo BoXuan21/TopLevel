@@ -104,6 +104,7 @@ class HealthWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
     override suspend fun doWork(): Result {
         val repo = Repo.get(applicationContext)
         if (HealthSync.sync(repo) != null) com.toplevel.app.health.StepCounter.sync(repo)
+        Widgets.refresh(applicationContext) // also rolls widgets over to the new day
         return Result.success()
     }
 }

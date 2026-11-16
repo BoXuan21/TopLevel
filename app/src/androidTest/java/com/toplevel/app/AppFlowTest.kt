@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -293,7 +294,7 @@ class AppFlowTest {
         scrollTo("START CHECK-IN")
         compose.onAllNodesWithText("START CHECK-IN").onFirst().performClick(); settle()
         shot("checkin")
-        compose.onNodeWithText("Cancel").performClick(); settle()
+        compose.onNodeWithText("Cancel").performScrollTo().performClick(); settle()
 
         // LEVEL UP: push XP over the next level → level-up window
         runBlocking {
