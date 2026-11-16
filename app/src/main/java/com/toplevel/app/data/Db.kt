@@ -39,6 +39,9 @@ interface GameDao {
     @Query("DELETE FROM quests WHERE date = :day AND source = 'ai' AND done = 0")
     suspend fun clearOpenAiQuests(day: Long)
 
+    @Query("DELETE FROM quests WHERE date = :day AND source = :source AND done = 0")
+    suspend fun clearOpenQuestsBySource(day: Long, source: String)
+
     @Query("SELECT COUNT(*) FROM quests WHERE date = :day AND done = 1")
     suspend fun doneCount(day: Long): Int
 
@@ -98,7 +101,7 @@ interface LifeDao {
     suspend fun foodSince(fromDay: Long): List<FoodEntry>
 
     @Insert
-    suspend fun insertFood(f: FoodEntry)
+    suspend fun insertFood(f: FoodEntry): Long
 
     @Delete
     suspend fun deleteFood(f: FoodEntry)
@@ -322,6 +325,27 @@ interface BackupDao {
     @Query("SELECT * FROM gold") suspend fun gold(): List<GoldEvent>
     @Query("SELECT * FROM rewards") suspend fun rewards(): List<Reward>
     @Query("SELECT * FROM savings") suspend fun savings(): List<SavingsEntry>
+
+    @Query("DELETE FROM quests") suspend fun wipeQuests()
+    @Query("DELETE FROM xp_events") suspend fun wipeXp()
+    @Query("DELETE FROM plans") suspend fun wipePlans()
+    @Query("DELETE FROM checkins") suspend fun wipeCheckins()
+    @Query("DELETE FROM food") suspend fun wipeFood()
+    @Query("DELETE FROM logs") suspend fun wipeLogs()
+    @Query("DELETE FROM skills") suspend fun wipeSkills()
+    @Query("DELETE FROM chat") suspend fun wipeChat()
+    @Query("DELETE FROM memories") suspend fun wipeMemories()
+    @Query("DELETE FROM discover") suspend fun wipeDiscover()
+    @Query("DELETE FROM sets") suspend fun wipeSets()
+    @Query("DELETE FROM health") suspend fun wipeHealth()
+    @Query("DELETE FROM body") suspend fun wipeBody()
+    @Query("DELETE FROM bosses") suspend fun wipeBosses()
+    @Query("DELETE FROM achievements") suspend fun wipeAchievements()
+    @Query("DELETE FROM skill_progress") suspend fun wipeProgress()
+    @Query("DELETE FROM session_items") suspend fun wipeSessionItems()
+    @Query("DELETE FROM gold") suspend fun wipeGold()
+    @Query("DELETE FROM rewards") suspend fun wipeRewards()
+    @Query("DELETE FROM savings") suspend fun wipeSavings()
 
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putQuests(l: List<Quest>)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putXp(l: List<XpEvent>)

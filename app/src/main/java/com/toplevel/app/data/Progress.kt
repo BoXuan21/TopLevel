@@ -145,7 +145,7 @@ suspend fun Repo.completeFocus(startTs: Long, minutes: Int) {
     prefs.focusTotalMin = prefs.focusTotalMin + minutes
     prefs.focusEnd = 0
     game.questsForNow(today()).firstOrNull { !it.done && (it.title.contains("deep", true) || it.title.contains("focus", true)) }
-        ?.let { toggleQuest(it.id) }
+        ?.let { completeQuest(it.id) }
     checkAchievements()
     Widgets.refresh(ctx)
 }

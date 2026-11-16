@@ -20,6 +20,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import androidx.room.withTransaction
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -55,8 +56,20 @@ class Repo private constructor(internal val ctx: Context) {
 
     internal suspend fun revoke(reason: String) = game.deleteXpByReason(reason)
 
-    suspend fun toggleQuest(id: Long) {
+    /** Complete (never un-complete) — safe for automatic paths like health sync. */
+    suspend fun completeQuest(id: Long) {
         val q = game.quest(id) ?: return
+        if (!q.done) toggleQuest(id, expectDone = false)
+    }
+
+    suspend fun toggleQuest(id: Long, expectDone: Boolean? = null) {
+        db.withTransaction { toggleQuestTx(id, expectDone) }
+        Widgets.refresh(ctx)
+    }
+
+    private suspend fun toggleQuestTx(id: Long, expectDone: Boolean?) {
+        val q = game.quest(id) ?: return
+        if (expectDone != null && q.done != expectDone) return
         val nq = q.copy(done = !q.done)
         game.updateQuest(nq)
         if (nq.done) {
@@ -82,7 +95,6 @@ class Repo private constructor(internal val ctx: Context) {
         if (all.isNotEmpty() && all.all { it.done }) award(Stat.DISCIPLINE, Rewards.ALL_QUESTS_BONUS, bonusKey)
         else revoke(bonusKey)
         checkAchievements()
-        Widgets.refresh(ctx)
     }
 
     suspend fun addQuest(title: String, stat: Stat, xp: Int, day: Long = today(), detail: String = "", source: String = "manual",
@@ -93,8 +105,15 @@ class Repo private constructor(internal val ctx: Context) {
     }
 
     suspend fun deleteQuest(q: Quest) {
-        revoke("quest:${q.id}")
-        game.deleteQuest(q)
+        db.withTransaction {
+            revoke("quest:${q.id}")
+            loseGold("quest:${q.id}")
+            game.deleteQuest(q)
+            val all = game.questsForNow(q.date)
+            val bonusKey = "allquests:${q.date}"
+            if (all.isNotEmpty() && all.all { it.done }) award(Stat.DISCIPLINE, Rewards.ALL_QUESTS_BONUS, bonusKey)
+            else revoke(bonusKey)
+        }
         Widgets.refresh(ctx)
     }
 
@@ -114,9 +133,9 @@ class Repo private constructor(internal val ctx: Context) {
     suspend fun generateQuests(force: Boolean = false): String? {
         val day = today()
         val existing = game.questsForNow(day)
-        if (!force && existing.isNotEmpty()) return null
+        if (!force && prefs.lastQuestGen == day) return null
         if (!prefs.hasKey) {
-            if (existing.isEmpty()) defaultQuests(day).forEach { game.insertQuest(it) }
+            if (existing.none { it.source == "system" || it.source == "ai" }) defaultQuests(day).forEach { game.insertQuest(it) }
             prefs.lastQuestGen = day
             Widgets.refresh(ctx)
             return null
@@ -174,16 +193,15 @@ Return: [{"title": "...", "detail": "short how/when", "stat": "STRENGTH", "xp": 
         val day = today()
         val before = life.foodSince(day).count { it.date == day }
         val entry = FoodEntry(date = day, ts = now(), name = name, kcal = kcal, protein = protein, carbs = carbs, fat = fat)
-        life.insertFood(entry)
-        if (before < Rewards.FOOD_LOG_DAILY_CAP) {
-            game.insertXp(XpEvent(ts = now(), stat = Stat.VITALITY, amount = Rewards.FOOD_LOG, reason = "food:$day:${now()}"))
-        }
+        val id = life.insertFood(entry)
+        if (before < Rewards.FOOD_LOG_DAILY_CAP) award(Stat.VITALITY, Rewards.FOOD_LOG, "food:$id")
         recheckProtein(day)
         Widgets.refresh(ctx)
     }
 
     suspend fun deleteFood(f: FoodEntry) {
         life.deleteFood(f)
+        revoke("food:${f.id}")
         recheckProtein(f.date)
         Widgets.refresh(ctx)
     }
@@ -272,7 +290,7 @@ Return: [{"title": "...", "detail": "short how/when", "stat": "STRENGTH", "xp": 
         award(Stat.SPIRIT, Rewards.CHECK_IN, "checkin:${c.date}")
         // Auto-complete a check-in quest if there is one
         game.questsForNow(c.date).firstOrNull { !it.done && it.title.contains("check-in", true) }
-            ?.let { toggleQuest(it.id) }
+            ?.let { completeQuest(it.id) }
         Widgets.refresh(ctx)
         if (!prefs.hasKey) return null
         return try {
@@ -288,8 +306,11 @@ Return {"reflection": "...", "tomorrow_quest": {"title": "...", "detail": "...",
             life.upsertCheckIn(c.copy(reflection = str(o, "reflection").orEmpty()))
             (o["tomorrow_quest"] as? JsonObject)?.let { q ->
                 val t = str(q, "title")
-                if (t != null) addQuest(t, Stat.parse(str(q, "stat")), int(q, "xp", 25),
-                    day = c.date + 1, detail = str(q, "detail").orEmpty(), source = "ai")
+                if (t != null) {
+                    game.clearOpenQuestsBySource(c.date + 1, "checkin")
+                    addQuest(t, Stat.parse(str(q, "stat")), int(q, "xp", 25),
+                        day = c.date + 1, detail = str(q, "detail").orEmpty(), source = "checkin")
+                }
             }
             null
         } catch (e: Exception) { e.message }
@@ -684,7 +705,8 @@ ${buildContext()}"""
             sb.append("\n## Calisthenics skill ladders\n")
             ladders.forEach { l ->
                 val p = v.progressOf(l.id) ?: SkillProgress(l.id)
-                sb.append("- ${l.name}: at ${l.stages[p.stage]} (best ${if (l.hold) "${p.bestHoldSec}s" else "${p.bestReps} reps"}), next ${l.stages.getOrNull(p.stage + 1) ?: "mastered"}\n")
+                val st = p.stage.coerceIn(0, l.stages.lastIndex)
+                sb.append("- ${l.name}: at ${l.stages[st]} (best ${if (l.hold) "${p.bestHoldSec}s" else "${p.bestReps} reps"}), next ${l.stages.getOrNull(st + 1) ?: "mastered"}\n")
             }
         }
         sb.append("\n## Money\nGold: ${v.goldBalanceNow()}. Savings pot: €${"%.0f".format(v.potNow())}. " +
