@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">TopLevel</string>
+    <string name="widget_loading">Loading…</string>
+</resources>

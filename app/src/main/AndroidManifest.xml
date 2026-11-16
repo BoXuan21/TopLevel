@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+    <uses-permission android:name="android.permission.health.READ_WEIGHT" />
+
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".TopLevelApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:resizeableActivity="true"
+        android:theme="@style/Theme.TopLevel">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Health Connect: privacy rationale (Android 13 and below) -->
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+
+        <!-- Health Connect: privacy rationale (Android 14+) -->
+        <activity-alias
+            android:name=".ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
+        <receiver
+            android:name=".widget.QuestWidgetReceiver"
+            android:exported="true"
+            android:label="TopLevel · Daily Quests">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quest_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.StatusWidgetReceiver"
+            android:exported="true"
+            android:label="TopLevel · Status">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/status_widget_info" />
+        </receiver>
+    </application>
+</manifest>
