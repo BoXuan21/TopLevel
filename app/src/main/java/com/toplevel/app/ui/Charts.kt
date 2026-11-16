@@ -30,9 +30,9 @@ fun LineChart(values: List<Float>, color: Color, unit: String, modifier: Modifie
     val span = (max - min).takeIf { it > 0.0001f } ?: 1f
     Column(modifier) {
         Row(Modifier.fillMaxWidth()) {
-            Text("${"%.1f".format(max)} $unit", color = C.muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+            Text("${"%.1f".format(max)} $unit", color = C.muted, fontSize = 10.sp, fontFamily = Fonts.tech,
                 modifier = Modifier.weight(1f))
-            Text("now ${"%.1f".format(values.last())} $unit", color = color, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+            Text("now ${"%.1f".format(values.last())} $unit", color = color, fontSize = 10.sp, fontFamily = Fonts.tech)
         }
         Canvas(Modifier.fillMaxWidth().height(140.dp)) {
             val stepX = size.width / (values.size - 1)
@@ -56,7 +56,7 @@ fun LineChart(values: List<Float>, color: Color, unit: String, modifier: Modifie
             drawCircle(color, radius = 7f, center = Offset((values.size - 1) * stepX, y(values.last())))
         }
         Row(Modifier.fillMaxWidth()) {
-            Text("${"%.1f".format(min)} $unit", color = C.muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+            Text("${"%.1f".format(min)} $unit", color = C.muted, fontSize = 10.sp, fontFamily = Fonts.tech,
                 modifier = Modifier.weight(1f))
             if (labels != null) Text("${labels.first} → ${labels.second}", color = C.muted, fontSize = 10.sp)
         }

@@ -10,11 +10,37 @@ import kotlinx.serialization.json.jsonObject
 import java.time.DayOfWeek
 import java.time.LocalDate
 
-/** One-off "[SYSTEM]" messages for the UI (achievements, penalties, boss…). */
+/** A "[SYSTEM]" pop-up window. */
+data class Popup(
+    val kind: Kind,
+    val title: String,
+    val body: String = "",
+    val lines: List<String> = emptyList(),
+    val reward: String = "",
+    /** Closes by itself after a few seconds (quests, logged meals). */
+    val auto: Boolean = kind == Kind.QUEST,
+) {
+    enum class Kind { NOTICE, QUEST, CLEAR, LEVEL_UP, ACHIEVEMENT, WARNING, BOSS, ARRIVED }
+}
+
+/** One-off "[SYSTEM]" pop-ups for the UI (quests, achievements, penalties, boss…). */
 object SystemEvents {
-    private val _flow = MutableSharedFlow<String>(extraBufferCapacity = 16)
-    val flow: SharedFlow<String> = _flow
-    fun emit(msg: String) { _flow.tryEmit(msg) }
+    private val _flow = MutableSharedFlow<Popup>(extraBufferCapacity = 32)
+    val flow: SharedFlow<Popup> = _flow
+
+    fun show(p: Popup) { _flow.tryEmit(p) }
+
+    /** Plain message: the window style is picked from its wording. */
+    fun emit(msg: String) {
+        val m = msg.lowercase()
+        show(when {
+            m.startsWith("achievement") -> Popup(Popup.Kind.ACHIEVEMENT, "ACHIEVEMENT UNLOCKED", msg.substringAfter(": "))
+            "penalty" in m || "failed" in m -> Popup(Popup.Kind.WARNING, "WARNING", msg)
+            "boss" in m -> Popup(Popup.Kind.BOSS, if ("defeated" in m) "BOSS DEFEATED" else "BOSS APPEARED", msg)
+            "advanced" in m || "complete" in m -> Popup(Popup.Kind.CLEAR, "LEVEL OF MASTERY RISES", msg)
+            else -> Popup(Popup.Kind.NOTICE, "NOTIFICATION", msg)
+        })
+    }
 }
 
 // ───────────────────────── Streaks ─────────────────────────

@@ -106,7 +106,7 @@ fun TrainScreen(vm: AppViewModel) {
                     session.forEach { item ->
                         if (item.block.isNotBlank() && item.block != lastBlock) {
                             lastBlock = item.block
-                            Text(item.block.uppercase(), color = C.accent, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                            Text(item.block.uppercase(), color = C.accent, fontSize = 10.sp, fontFamily = Fonts.tech,
                                 fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
                         }
                         SessionRow(item, onToggle = { vm.toggleSessionItem(item) }, onLog = { logTarget = item.exercise })
@@ -154,12 +154,12 @@ fun TrainScreen(vm: AppViewModel) {
 @Composable
 private fun SessionRow(item: SessionItem, onToggle: () -> Unit, onLog: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(10.dp))
+        Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(SmallShape)
             .background(C.bg.copy(alpha = 0.5f)).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(22.dp).clip(RoundedCornerShape(5.dp)).background(if (item.done) C.good else C.panel2).tap(onToggle),
+            Modifier.size(22.dp).clip(SmallShape).background(if (item.done) C.good else C.panel2).tap(onToggle),
             contentAlignment = Alignment.Center,
         ) { if (item.done) Text("✓", color = C.bg, fontWeight = FontWeight.Black) }
         Spacer(Modifier.width(10.dp))
@@ -167,7 +167,7 @@ private fun SessionRow(item: SessionItem, onToggle: () -> Unit, onLog: () -> Uni
             Text(item.exercise, color = if (item.done) C.muted else C.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 textDecoration = if (item.done) TextDecoration.LineThrough else null)
             Text(item.target + if (item.rest.isNotBlank()) " · rest ${item.rest}" else "",
-                color = C.accentSoft, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                color = C.accentSoft, fontSize = 12.sp, fontFamily = Fonts.tech)
             if (item.note.isNotBlank()) Text(item.note, color = C.muted, fontSize = 12.sp)
         }
         TextButton(onClick = onLog) { Text("Log", color = C.accent, fontSize = 12.sp) }
@@ -213,15 +213,15 @@ private fun LadderPanel(vm: AppViewModel, l: Cali.Ladder, p: SkillProgress, allS
             }
         }
         Spacer(Modifier.height(10.dp))
-        Text("STAGE ${stage + 1}/${l.stages.size}", color = C.muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+        Text("STAGE ${stage + 1}/${l.stages.size}", color = C.muted, fontSize = 10.sp, fontFamily = Fonts.tech)
         Text(l.stages[stage], color = C.text, fontSize = 22.sp, fontWeight = FontWeight.Black)
         if (!maxed) Text("Next: ${l.stages[stage + 1]}", color = C.accentSoft, fontSize = 13.sp)
         Spacer(Modifier.height(8.dp))
         Row {
             Text(if (l.hold) "PR ${pr}s" else "PR $pr reps", color = C.good, fontSize = 13.sp,
-                fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                fontFamily = Fonts.tech, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Text(if (l.hold) "next-stage standard ${need}s" else "standard $need reps", color = C.muted, fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace)
+                fontFamily = Fonts.tech)
         }
         Spacer(Modifier.height(4.dp))
         Bar(maxOf(best, pr).toFloat() / need, if (qualified || pr >= need) C.good else C.stat(Stat.STRENGTH))
@@ -376,12 +376,12 @@ private fun TodaySets(vm: AppViewModel) {
             }
             list.forEachIndexed { i, s ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("${i + 1}.", color = C.muted, fontFamily = FontFamily.Monospace, modifier = Modifier.width(28.dp))
+                    Text("${i + 1}.", color = C.muted, fontFamily = Fonts.tech, modifier = Modifier.width(28.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
                             (if (s.holdSec > 0) "${s.holdSec}s" else "${s.reps} reps") +
                                 (if (s.weightKg > 0f) " · +${fmtKg(s.weightKg)} kg" else ""),
-                            color = C.accentSoft, fontFamily = FontFamily.Monospace,
+                            color = C.accentSoft, fontFamily = Fonts.tech,
                         )
                         if (s.note.isNotBlank()) Text(s.note, color = C.muted, fontSize = 11.sp)
                     }
@@ -408,10 +408,10 @@ private fun VolumePanel(tracked: List<Cali.Ladder>, sets: List<WorkoutSet>, toda
             val delta = now - before
             Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(l.name, color = C.text, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                Text("$now$unit", color = C.text, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                Text("$now$unit", color = C.text, fontFamily = Fonts.tech, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(8.dp))
                 Text((if (delta >= 0) "▲" else "▼") + "${kotlin.math.abs(delta)}", color = if (delta >= 0) C.good else C.warn,
-                    fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                    fontFamily = Fonts.tech, fontSize = 12.sp)
             }
             Bar(if (maxOf(now, before) > 0) now.toFloat() / maxOf(now, before) else 0f, C.stat(Stat.STRENGTH), height = 4)
         }
@@ -439,7 +439,7 @@ private fun ProgressPanel(vm: AppViewModel) {
             LineChart(byDay.map { d -> d.sumOf { it.holdSec }.toFloat() }, C.accent, "s")
             hist.maxByOrNull { it.holdSec }?.let {
                 Text("PR: ${it.holdSec}s${if (it.note.isNotBlank()) " (${it.note})" else ""}", color = C.good,
-                    fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                    fontSize = 12.sp, fontFamily = Fonts.tech)
             }
         } else if (hist.any { it.weightKg > 0f }) {
             Text("Estimated 1-rep max per session (added weight)", color = C.muted, fontSize = 11.sp)
@@ -448,7 +448,7 @@ private fun ProgressPanel(vm: AppViewModel) {
             Text("Best reps per session", color = C.muted, fontSize = 11.sp)
             LineChart(byDay.map { d -> d.maxOf { it.reps }.toFloat() }, C.stat(Stat.STRENGTH), "reps")
             hist.maxByOrNull { it.reps }?.let {
-                Text("PR: ${it.reps} reps", color = C.good, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                Text("PR: ${it.reps} reps", color = C.good, fontSize = 12.sp, fontFamily = Fonts.tech)
             }
         }
     }

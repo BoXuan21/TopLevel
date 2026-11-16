@@ -53,6 +53,17 @@ import com.toplevel.app.data.weekStart
 import com.toplevel.app.health.HealthSync
 import com.toplevel.app.work.Focus
 import com.toplevel.app.work.Scheduler
+import com.toplevel.app.data.AdviceCodec
+import com.toplevel.app.data.FoodScan
+import com.toplevel.app.data.Popup
+import com.toplevel.app.data.Product
+import com.toplevel.app.data.SystemEvents
+import com.toplevel.app.data.estimateFoodPhoto
+import com.toplevel.app.data.PlanType
+import com.toplevel.app.data.summarizePlan
+import com.toplevel.app.health.StepCounter
+import com.toplevel.app.data.nextMoves
+import com.toplevel.app.data.whatToEat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -133,17 +144,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onStart() {
         refreshCalendar()
+        loadRecentFoods()
+        water = prefs.water(day)
         focusEnd = prefs.focusEnd
         viewModelScope.launch(Dispatchers.IO) {
             healthConnected = HealthSync.granted(getApplication())
-            if (healthConnected) HealthSync.sync(repo)
+            if (healthConnected) HealthSync.sync(repo) else StepCounter.sync(repo)
             repo.checkAchievements()
             refreshStreak()
         }
+        if (!wizardDone) return
         // first open of the day: penalties, quests, boss, discoveries
         if (prefs.lastQuestGen != day) run("Designing today's quests…") {
             repo.applyPenalties()
             val e1 = repo.generateQuests()
+            val qs = repo.game.questsForNow(repo.today())
+            if (qs.isNotEmpty()) SystemEvents.show(Popup(Popup.Kind.ARRIVED, "DAILY QUESTS ARRIVED",
+                "Your orders for today are in.", lines = qs.take(6).map { it.title },
+                reward = "Clear them all: +${com.toplevel.app.game.Rewards.ALL_QUESTS_BONUS} DIS bonus"))
             val e2 = repo.generateBoss()
             val e3 = repo.generateDiscover()
             e1 ?: e2 ?: e3
@@ -172,10 +190,163 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun addFood(name: String, kcal: Int, p: Int, c: Int, f: Int) = io { repo.addFood(name, kcal, p, c, f) }
     fun deleteFood(f: FoodEntry) = io { repo.deleteFood(f) }
     fun estimateAndAddFood(text: String) = run("Estimating macros…") {
-        val m = repo.estimateFood(text)
+        logMacros(repo.estimateFood(text)); null
+    }
+
+    private suspend fun logMacros(m: Repo.Macros) {
         repo.addFood(m.name, m.kcal, m.protein, m.carbs, m.fat)
+        SystemEvents.show(Popup(Popup.Kind.NOTICE, "MEAL LOGGED", m.name,
+            lines = listOfNotNull(m.tip.takeIf { it.isNotBlank() }),
+            reward = "${m.kcal} kcal · P${m.protein} C${m.carbs} F${m.fat}", auto = true))
+        loadRecentFoods()
+    }
+
+    /** Photo of a meal or nutrition label → Claude vision estimate. */
+    fun logPhoto(uri: Uri, note: String) = run("Scanning your meal…") {
+        val bmp = FoodScan.loadBitmap(getApplication(), uri)
+        logMacros(repo.estimateFoodPhoto(FoodScan.jpegBase64(bmp), note)); null
+    }
+
+    /** Barcode photo → on-device decode → Open Food Facts. Opens the portion dialog. */
+    var scanned by mutableStateOf<Product?>(null)
+    fun scanBarcode(uri: Uri) = run("Reading barcode…") {
+        val bmp = FoodScan.loadBitmap(getApplication(), uri, maxSide = 2000)
+        val code = FoodScan.readBarcode(bmp) ?: return@run "No barcode found. Hold the camera closer and keep it sharp."
+        val p = FoodScan.lookup(code) ?: return@run "Product $code isn't in Open Food Facts. Try a photo of the label instead."
+        scanned = p
         null
     }
+    fun logProduct(p: Product, grams: Double) {
+        scanned = null
+        io { logMacros(p.macrosFor(grams)) }
+    }
+
+    /** Recently eaten foods for one-tap re-logging. */
+    var recentFoods by mutableStateOf<List<FoodEntry>>(emptyList())
+        private set
+    fun loadRecentFoods() {
+        viewModelScope.launch(Dispatchers.IO) {
+            recentFoods = repo.life.foodSince(day - 30).reversed()
+                .distinctBy { it.name.lowercase().trim() }.take(10)
+        }
+    }
+    fun relog(f: FoodEntry) = io {
+        repo.addFood(f.name, f.kcal, f.protein, f.carbs, f.fat)
+        SystemEvents.show(Popup(Popup.Kind.NOTICE, "MEAL LOGGED", f.name,
+            reward = "${f.kcal} kcal · P${f.protein} C${f.carbs} F${f.fat}", auto = true))
+    }
+
+    // Water
+    var water by mutableIntStateOf(prefs.water(repo.today()))
+        private set
+    fun addWater(delta: Int) {
+        val n = (prefs.water(day) + delta).coerceAtLeast(0)
+        prefs.setWater(day, n); water = n
+        if (delta > 0 && n == prefs.waterGoal) SystemEvents.show(Popup(Popup.Kind.CLEAR, "HYDRATION COMPLETE",
+            "${n} glasses today. Your body thanks you.", auto = true))
+    }
+
+    // Type-to-find food: your recent foods, built-in dishes, then Open Food Facts
+    data class FoodHits(
+        val query: String = "",
+        val recent: List<FoodEntry> = emptyList(),
+        val dishes: List<com.toplevel.app.data.Dish> = emptyList(),
+        val products: List<Product> = emptyList(),
+        val searching: Boolean = false,
+    )
+    var foodHits by mutableStateOf(FoodHits())
+        private set
+    private var searchJob: kotlinx.coroutines.Job? = null
+    fun searchFood(q: String) {
+        searchJob?.cancel()
+        val query = q.trim()
+        if (query.length < 2) { foodHits = FoodHits(); return }
+        val nq = com.toplevel.app.data.LocalFoods.norm(query)
+        val recent = recentFoods.filter { com.toplevel.app.data.LocalFoods.norm(it.name).contains(nq) }.take(3)
+        val dishes = com.toplevel.app.data.LocalFoods.search(query)
+        foodHits = FoodHits(query, recent, dishes, emptyList(), searching = query.length >= 3)
+        if (query.length < 3) return
+        searchJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(650) // wait until typing pauses
+            val products = try { FoodScan.search(query) } catch (_: Exception) { emptyList() }
+            if (foodHits.query == query) foodHits = foodHits.copy(products = products, searching = false)
+        }
+    }
+    fun clearFoodSearch() { searchJob?.cancel(); foodHits = FoodHits() }
+    fun logDish(d: com.toplevel.app.data.Dish) { clearFoodSearch(); io { logMacros(d.macros()) } }
+    fun pickProduct(p: Product) { clearFoodSearch(); scanned = p }
+
+    // Plans from files (Excel / CSV)
+    fun importPlan(uri: Uri, type: String = PlanType.TRAINING) = run("Reading your plan…") {
+        val text = com.toplevel.app.data.PlanImport.read(getApplication(), uri)
+        repo.life.upsertPlan(Plan(type, text, System.currentTimeMillis()))
+        val lines = if (prefs.hasKey) try { repo.summarizePlan(type, text) } catch (_: Exception) { emptyList() } else emptyList()
+        SystemEvents.show(Popup(Popup.Kind.CLEAR, "PLAN LOADED",
+            "${PlanType.label(type)} imported (${text.lines().size} rows). Your quests now follow it.",
+            lines = lines))
+        if (prefs.hasKey && wizardDone) {
+            repo.generateQuests(force = true)
+            advice = emptyList(); prefs.adviceJson = ""
+        }
+        null
+    }
+
+    // Steps from the phone sensor (when Health Connect isn't linked)
+    fun syncSteps() = viewModelScope.launch(Dispatchers.IO) { if (!healthConnected) StepCounter.sync(repo) }
+
+    // What to eat next (AI)
+    var foodAdvice by mutableStateOf(if (prefs.foodAdviceTs > 0 && sameDay(prefs.foodAdviceTs)) prefs.foodAdvice else "")
+        private set
+    var foodAdviceBusy by mutableStateOf(false)
+        private set
+    fun askWhatToEat(atHome: String = "") {
+        if (foodAdviceBusy) return
+        foodAdviceBusy = true
+        viewModelScope.launch {
+            try {
+                val a = withContext(Dispatchers.IO) { repo.whatToEat(atHome) }
+                prefs.foodAdvice = a; prefs.foodAdviceTs = System.currentTimeMillis(); foodAdvice = a
+            } catch (e: Exception) { message = e.message }
+            foodAdviceBusy = false
+        }
+    }
+
+    // Best next move (AI, with an offline fallback)
+    var advice by mutableStateOf(AdviceCodec.decode(prefs.adviceJson))
+        private set
+    var adviceTs by mutableLongStateOf(prefs.adviceTs)
+        private set
+    var adviceBusy by mutableStateOf(false)
+        private set
+    val adviceStale get() = advice.isEmpty() || System.currentTimeMillis() - adviceTs > 3 * 3_600_000L || !sameDay(adviceTs)
+    fun refreshAdvice() {
+        if (adviceBusy || !prefs.hasKey) return
+        adviceBusy = true
+        viewModelScope.launch {
+            try {
+                val a = withContext(Dispatchers.IO) { repo.nextMoves() }
+                if (a.isNotEmpty()) {
+                    advice = a; adviceTs = System.currentTimeMillis()
+                    prefs.adviceJson = AdviceCodec.encode(a); prefs.adviceTs = adviceTs
+                }
+            } catch (e: Exception) { message = e.message }
+            adviceBusy = false
+        }
+    }
+    private fun sameDay(ts: Long) =
+        java.time.Instant.ofEpochMilli(ts).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toEpochDay() == day
+
+    // Setup wizard
+    var wizardDone by mutableStateOf(prefs.wizardDone)
+        private set
+    fun finishWizard() {
+        prefs.wizardDone = true; prefs.onboarded = true; wizardDone = true
+        SystemEvents.show(Popup(Popup.Kind.ARRIVED, "PLAYER REGISTERED",
+            "Welcome, ${prefs.name.ifBlank { "Player" }}. From today, every rep, meal and page you read counts.",
+            reward = "Level 1 · Rank E"))
+        onStart()
+    }
+    fun restartWizard() { prefs.wizardDone = false; wizardDone = false }
     fun suggestMacros() = run("Analysing your progress…") { macroSuggestion = repo.suggestMacros(); null }
     fun applyMacros(m: MacroSuggestion) {
         prefs.kcalGoal = m.kcal; prefs.proteinGoal = m.protein; prefs.carbsGoal = m.carbs; prefs.fatGoal = m.fat

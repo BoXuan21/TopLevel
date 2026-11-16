@@ -71,7 +71,7 @@ private fun SkillRow(vm: AppViewModel, s: SkillItem) {
     var notes by remember(s.id) { mutableStateOf(s.notes) }
     val color = when (s.status) { "learned" -> C.good; "learning" -> C.accent; else -> C.muted }
     Column(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(10.dp))
+        Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(SmallShape)
             .background(C.bg.copy(alpha = 0.5f)).padding(10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -86,7 +86,7 @@ private fun SkillRow(vm: AppViewModel, s: SkillItem) {
             Column(Modifier.weight(1f).tap { open = !open }) {
                 Text(s.title, color = C.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 if (s.area.isNotBlank()) Text(s.area.uppercase(), color = C.accentSoft, fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace)
+                    fontFamily = Fonts.tech)
                 if (!open && s.notes.isNotBlank()) Text(s.notes, color = C.muted, fontSize = 12.sp, maxLines = 1)
             }
             IconButton(onClick = { vm.deleteSkill(s) }, modifier = Modifier.size(32.dp)) {
