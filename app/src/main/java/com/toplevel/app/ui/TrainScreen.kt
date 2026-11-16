@@ -86,7 +86,7 @@ fun TrainScreen(vm: AppViewModel) {
                 action = {
                     Switch(
                         checked = vm.coachSessions,
-                        onCheckedChange = { vm.setCoachSessions(it) },
+                        onCheckedChange = { vm.updateCoachSessions(it) },
                         colors = SwitchDefaults.colors(checkedTrackColor = C.accent),
                     )
                 },

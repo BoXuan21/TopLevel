@@ -204,7 +204,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var coachSessions by mutableStateOf(prefs.coachSessions)
         private set
-    fun setCoachSessions(on: Boolean) { prefs.coachSessions = on; coachSessions = on }
+    fun updateCoachSessions(on: Boolean) { prefs.coachSessions = on; coachSessions = on }
     val sets14 = repo.fit.setsSinceFlow(repo.today() - 13)
     val allSets = repo.fit.allSets()
     fun buildSession() = run("Your coach is building today's session…") { repo.generateSession() }
