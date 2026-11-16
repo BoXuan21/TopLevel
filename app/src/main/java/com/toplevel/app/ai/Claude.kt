@@ -40,12 +40,23 @@ class Claude(private val prefs: Prefs) {
         messages: JsonArray,
         tools: JsonArray? = null,
         maxTokens: Int = 2048,
+        small: Boolean = false,
+        cache: Boolean = false,
     ): JsonObject = withContext(Dispatchers.IO) {
         if (!prefs.hasKey) throw ClaudeException("Add your Anthropic API key in Setup first.")
         val body = buildJsonObject {
-            put("model", prefs.model)
+            // Small, well-defined jobs (macros, summaries) run on the cheaper fast model
+            put("model", if (small) SMALL_MODEL else prefs.model)
             put("max_tokens", maxTokens)
-            put("system", system)
+            if (cache) {
+                // Cache the (large) system prompt so repeated chat/tool rounds re-use it cheaply
+                put("system", buildJsonArray {
+                    add(buildJsonObject {
+                        put("type", "text"); put("text", system)
+                        put("cache_control", buildJsonObject { put("type", "ephemeral") })
+                    })
+                })
+            } else put("system", system)
             put("messages", messages)
             if (tools != null) put("tools", tools)
         }
@@ -70,14 +81,14 @@ class Claude(private val prefs: Prefs) {
     }
 
     /** One-shot text answer. */
-    suspend fun ask(system: String, user: String, maxTokens: Int = 1500): String {
-        val res = send(system, buildJsonArray { add(userMsg(user)) }, maxTokens = maxTokens)
+    suspend fun ask(system: String, user: String, maxTokens: Int = 1500, small: Boolean = false): String {
+        val res = send(system, buildJsonArray { add(userMsg(user)) }, maxTokens = maxTokens, small = small)
         return textOf(res)
     }
 
     /** One-shot answer parsed as JSON (tolerates code fences / chatter). */
-    suspend fun askJson(system: String, user: String, maxTokens: Int = 2000): JsonElement {
-        val txt = ask("$system\n\nRespond with JSON only. No prose, no code fences.", user, maxTokens)
+    suspend fun askJson(system: String, user: String, maxTokens: Int = 2000, small: Boolean = false): JsonElement {
+        val txt = ask("$system\n\nRespond with JSON only. No prose, no code fences.", user, maxTokens, small)
         return extractJson(txt) ?: throw ClaudeException("Claude didn't return valid JSON.")
     }
 
@@ -93,6 +104,9 @@ class Claude(private val prefs: Prefs) {
     }
 
     companion object {
+        /** Fast, cheap model for small structured jobs. */
+        const val SMALL_MODEL = "claude-haiku-5-5"
+
         fun userMsg(text: String) = buildJsonObject {
             put("role", "user")
             put("content", text)
