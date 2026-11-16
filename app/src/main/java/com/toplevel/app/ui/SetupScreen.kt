@@ -121,6 +121,8 @@ fun SetupScreen(
             }
         }
 
+        item { SoundPanel(vm) }
+
         item {
             Panel(title = "Plans & context") {
                 Text("Paste anything here — your coach and quest generator read all of it. You can also paste plans straight into the Coach chat.",
@@ -252,5 +254,72 @@ private fun PlanEditor(type: String, current: String, onSave: (String) -> Unit) 
             Spacer(Modifier.height(6.dp))
             GhostButton("Save") { onSave(text.trim()); open = false }
         }
+    }
+}
+
+@Composable
+private fun SoundPanel(vm: AppViewModel) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val p = vm.prefs
+    var sfx by remember { mutableStateOf(p.sfxOn) }
+    var mode by remember { mutableStateOf(p.musicMode) }
+    var name by remember { mutableStateOf(p.musicName) }
+    var vol by remember { mutableStateOf(p.musicVolume) }
+    val picker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                ctx.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (_: Exception) { }
+            val n = try {
+                ctx.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { if (it.moveToFirst()) it.getString(0) else null }
+            } catch (_: Exception) { null } ?: "My track"
+            p.musicUri = uri.toString(); p.musicName = n; p.musicMode = "custom"
+            name = n; mode = "custom"
+            com.toplevel.app.audio.Sound.startMusic(ctx)
+        }
+    }
+    Panel(title = "Sound") {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("System sound effects", color = C.text, modifier = Modifier.weight(1f))
+            Switch(
+                checked = sfx,
+                onCheckedChange = {
+                    sfx = it; p.sfxOn = it
+                    if (it) com.toplevel.app.audio.Sound.play(ctx, com.toplevel.app.audio.Sound.Fx.OPEN)
+                },
+                colors = SwitchDefaults.colors(checkedTrackColor = C.accent),
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text("BACKGROUND MUSIC", color = C.accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("off" to "Off", "theme" to "Dark theme", "custom" to "My track").forEach { (k, l) ->
+                Segment(l, mode == k) {
+                    if (k == "custom" && p.musicUri.isBlank()) { picker.launch(arrayOf("audio/*")); return@Segment }
+                    mode = k; p.musicMode = k
+                    com.toplevel.app.audio.Sound.startMusic(ctx)
+                }
+            }
+        }
+        if (mode != "off") {
+            Spacer(Modifier.height(8.dp))
+            Text("Volume", color = C.muted, fontSize = 13.sp)
+            androidx.compose.material3.Slider(
+                value = vol,
+                onValueChange = { vol = it; com.toplevel.app.audio.Sound.setVolume(it) },
+                onValueChangeFinished = { p.musicVolume = vol },
+                valueRange = 0.05f..1f,
+                colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = C.accent, activeTrackColor = C.accent),
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        GhostButton(if (name.isBlank()) "Choose my own track" else "Track: ${name.take(28)}") { picker.launch(arrayOf("audio/*")) }
+        Text("\"Dark theme\" is an original loop made by the app. \"My track\" plays any audio file on your phone " +
+            "(e.g. a song you own) on repeat while the app is open.", color = C.muted, fontSize = 12.sp,
+            modifier = Modifier.padding(top = 6.dp))
     }
 }

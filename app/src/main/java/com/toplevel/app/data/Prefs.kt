@@ -204,6 +204,24 @@ class Prefs(ctx: Context) {
         get() = sp.getLong("step_last", 0)
         set(v) = sp.edit().putLong("step_last", v).apply()
 
+    // Sound
+    var sfxOn: Boolean
+        get() = sp.getBoolean("sfx_on", true)
+        set(v) = sp.edit().putBoolean("sfx_on", v).apply()
+    /** "off", "theme" (built-in dark theme) or "custom" (the user's own audio file). */
+    var musicMode: String
+        get() = sp.getString("music_mode", "theme") ?: "theme"
+        set(v) = sp.edit().putString("music_mode", v).apply()
+    var musicUri: String
+        get() = sp.getString("music_uri", "") ?: ""
+        set(v) = sp.edit().putString("music_uri", v).apply()
+    var musicName: String
+        get() = sp.getString("music_name", "") ?: ""
+        set(v) = sp.edit().putString("music_name", v).apply()
+    var musicVolume: Float
+        get() = sp.getFloat("music_volume", 0.35f)
+        set(v) = sp.edit().putFloat("music_volume", v).apply()
+
     // Water: glasses (250 ml) per day
     var waterGoal: Int
         get() = sp.getInt("water_goal", 10)

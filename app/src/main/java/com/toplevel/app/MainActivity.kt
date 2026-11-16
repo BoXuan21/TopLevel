@@ -141,6 +141,12 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         vm.onStart()
+        com.toplevel.app.audio.Sound.startMusic(this)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        com.toplevel.app.audio.Sound.pause()
     }
 }
 
