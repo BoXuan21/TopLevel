@@ -125,9 +125,18 @@ class Repo private constructor(internal val ctx: Context) {
     private suspend fun defaultQuests(day: Long): List<Quest> {
         val topic = life.skillsNow().firstOrNull { it.status == "learning" }?.title
         val skipped = prefs.skippedQuests.map { it.lowercase() }.toSet()
+        val planned = weekPlan()?.day(WeekPlan.todayIndex())
+        val training = when {
+            planned == null -> Quest(date = day, title = prefs.sportList.firstOrNull()?.let { "Training: $it session (log it in Train)" }
+                ?: "Train according to plan", stat = Stat.STRENGTH, xp = 40, source = "system")
+            planned.isEmpty() -> Quest(date = day, title = "Rest day: 20 min walk or mobility", stat = Stat.VITALITY, xp = 15, source = "system")
+            else -> Quest(date = day, title = "Today: " + planned.joinToString(" + ") { it.title.ifBlank { it.sport } },
+                detail = planned.mapNotNull { it.detail.ifBlank { null } }.joinToString(" · "), stat = Stat.STRENGTH, xp = 40,
+                source = "system", autoType = "workout", target = planned.sumOf { it.minutes }.coerceAtLeast(0))
+                .let { if (it.target == 0) it.copy(autoType = "") else it }
+        }
         return listOf(
-            Quest(date = day, title = prefs.sportList.firstOrNull()?.let { "Training: $it session (log it in Train)" } ?: "Train according to plan",
-                stat = Stat.STRENGTH, xp = 40, source = "system"),
+            training,
             Quest(date = day, title = "Walk 8,000 steps", stat = Stat.VITALITY, xp = 20, source = "system", autoType = "steps", target = 8000),
             Quest(date = day, title = "Hit your protein goal (${prefs.proteinGoal} g)", stat = Stat.VITALITY, xp = 20, source = "system"),
             if (topic != null) Quest(date = day, title = "Quiz: answer 10 questions on $topic", stat = Stat.INTELLECT, xp = 30,
@@ -209,6 +218,8 @@ Personalise:
 - Write titles and details in the user's language (see "Language").
 Rules:
 - 4 to 7 quests for TODAY, concrete and checkable ("Push day: bench 4x8, OHP 3x10…", not "work out").
+- If there is a "Weekly sport plan": today's training quest IS today's planned session(s) (title = the session, detail = its content,
+  auto "workout", target = its minutes). Planned rest day → a light recovery quest (walk, mobility), no hard training.
 - Training quests are in THEIR sports (## Training profile → Sports, "In their words"), never a sport they don't do.
   Follow today's training plan / their weekly rhythm; spread their sports over the week; on rest days give a recovery quest.
   If they log sessions by hand, phrase it so one logged session completes it (or use auto "workout" with minutes).
@@ -694,6 +705,9 @@ ${buildContext()}"""
         sb.append("\n## Training profile\n")
         sb.append("Sports: ${prefs.sportList.joinToString().ifBlank { "not set yet" }}\n")
         if (prefs.sportNotes.isNotBlank()) sb.append("In their words: ${prefs.sportNotes}\n")
+        weekPlan()?.let { wp ->
+            sb.append("\n## Weekly sport plan (today is ${WeekPlan.names[WeekPlan.todayIndex()]})\n${wp.describe()}\n")
+        }
         sb.append("Level: ${Prefs.Levels.trainingLevels.getOrNull(prefs.trainingLevel)?.let { "${it.first} (${it.second})" } ?: "unknown"}\n")
         if (prefs.equipment.isNotBlank()) sb.append("Equipment available: ${prefs.equipment}\n")
         if (prefs.heightCm > 0) sb.append("Body: ${prefs.heightCm} cm, ${prefs.age} y, ${if (prefs.sex == "f") "female" else "male"}\n")

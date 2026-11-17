@@ -393,6 +393,7 @@ Return {"cards": [{"q": "...", "a": "..."}]}""",
         Flashcard(front = q, back = a, due = day, createdAt = now, topic = topic.title)
     }
     if (cards.isNotEmpty()) db.grow().insertCards(cards)
+    Widgets.refresh(ctx)
     return cards.size
 }
 
@@ -425,6 +426,7 @@ suspend fun Repo.reviewCard(c: Flashcard, grade: Int) {
     award(Stat.INTELLECT, minOf(20, n * 2), "cards:$day")
     // Quiz quests ("answer 10 quiz questions") complete themselves
     game.questsForNow(day).filter { !it.done && it.autoType == "cards" && it.target in 1..n }.forEach { completeQuest(it.id) }
+    Widgets.refresh(ctx)
 }
 
 // ───────────────────────── Spending ─────────────────────────

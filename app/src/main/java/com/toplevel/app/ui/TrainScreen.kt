@@ -81,6 +81,7 @@ fun TrainScreen(vm: AppViewModel) {
             return@LazyColumn
         }
 
+        item { WeekPlanPanel(vm) }
         item { SessionLog(vm, sports) }
         item { WeekSessions(vm) }
 

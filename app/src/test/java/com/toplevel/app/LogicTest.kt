@@ -15,6 +15,27 @@ import org.junit.Test
 
 class LogicTest {
 
+    @Test fun weekPlanLines() {
+        val s = com.toplevel.app.data.WeekPlan.parseLines(
+            "Gym / weights: Push day 60 min\nEasy run 1 h\n\nrest", listOf("Running", "Gym / weights"))
+        assertEquals(2, s.size)
+        assertEquals("Gym / weights", s[0].sport); assertEquals(60, s[0].minutes)
+        assertEquals("Running", s[1].sport); assertEquals(60, s[1].minutes)
+        // round trip keeps sessions
+        val back = com.toplevel.app.data.WeekPlan.parseLines(com.toplevel.app.data.WeekPlan.toLines(s), listOf("Running"))
+        assertEquals(s.map { it.sport to it.minutes }, back.map { it.sport to it.minutes })
+        // a rest day is an empty day
+        assertTrue(com.toplevel.app.data.WeekPlan().withDay(2, emptyList()).day(2).isEmpty())
+    }
+
+    @Test fun sessionLabel() {
+        val e = com.toplevel.app.data.LogEntry(date = 0, ts = 0, category = "training",
+            text = com.toplevel.app.data.Sports.label("Running", 45, 8f, "easy"))
+        assertEquals("Running · 45 min · 8 km · easy", e.text)
+        assertEquals("Running", com.toplevel.app.data.Sports.sportOf(e))
+        assertNull(com.toplevel.app.data.Sports.sportOf(e.copy(text = "Felt strong today")))
+    }
+
     @Test fun levelCurve() {
         assertEquals(1, Leveling.levelFor(0))
         assertEquals(1, Leveling.levelFor(49))

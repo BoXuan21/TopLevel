@@ -1,5 +1,6 @@
 package com.toplevel.app.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -117,6 +118,127 @@ fun SessionLog(vm: AppViewModel, sports: List<String>) {
         }
         if (vm.healthConnected) Text("Workouts from your watch / Health Connect count automatically.", color = C.muted,
             fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+    }
+}
+
+/** Mon–Sun plan: today highlighted, tap a day to edit, ✓ when a session was logged that day. */
+@Composable
+fun WeekPlanPanel(vm: AppViewModel) {
+    val logs by vm.recentLogs.collectAsState(initial = emptyList())
+    var pasteOpen by rememberSaveable { mutableStateOf(false) }
+    var editDay by rememberSaveable { mutableStateOf(-1) }
+    val plan = vm.weekPlan
+    val today = com.toplevel.app.data.WeekPlan.todayIndex()
+    val monday = vm.day - today
+    val color = C.stat(Stat.STRENGTH)
+
+    Panel(title = "Your week", color = color) {
+        if (plan == null) {
+            Text("Get a plan for the week: the AI builds one from your sports, or paste the plan you already have " +
+                "(from a coach, an app, a note). Your daily quests follow it.", color = C.muted, fontSize = 14.sp)
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PrimaryButton("Build my week", Modifier.weight(1f), enabled = vm.prefs.hasKey && vm.busy == null) { vm.makeWeekPlan() }
+                GhostButton("Paste plan", enabled = vm.busy == null) { pasteOpen = true }
+            }
+            androidx.compose.material3.TextButton(onClick = { editDay = today }) { Text("Or write it yourself", color = C.accent) }
+        } else {
+            com.toplevel.app.data.WeekPlan.names.forEachIndexed { i, name ->
+                val s = plan.day(i)
+                val isToday = i == today
+                val done = logs.any { it.date == monday + i && Sports.sportOf(it) != null }
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                        .then(if (isToday) Modifier.background(color.copy(alpha = 0.12f), SmallShape) else Modifier)
+                        .tap { editDay = i }.padding(horizontal = 8.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(name.uppercase(), color = if (isToday) color else C.muted, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.width(46.dp))
+                    Column(Modifier.weight(1f)) {
+                        if (s.isEmpty()) Text("Rest", color = C.muted, fontSize = 15.sp)
+                        s.forEach { p ->
+                            Text("${Sports.of(p.sport).icon} ${p.label()}", color = if (isToday) C.text else C.text.copy(alpha = 0.85f),
+                                fontSize = 15.sp, fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal)
+                            if (isToday && p.detail.isNotBlank()) Text(p.detail, color = C.muted, fontSize = 13.sp)
+                        }
+                    }
+                    if (done) Text("✓", color = C.good, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                }
+            }
+            // Today: one tap to log what was planned
+            val todays = plan.day(today)
+            val doneToday = logs.any { it.date == vm.day && Sports.sportOf(it) != null }
+            if (todays.isNotEmpty() && !doneToday) {
+                Spacer(Modifier.height(8.dp))
+                PrimaryButton("Done: " + todays.joinToString(" + ") { it.title.ifBlank { it.sport } }, Modifier.fillMaxWidth()) {
+                    todays.forEach { vm.logSession(it.sport, it.minutes.coerceAtLeast(1), null, it.title) }
+                }
+            }
+            Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Tap a day to change it.", color = C.muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                androidx.compose.material3.TextButton(onClick = { pasteOpen = true }, enabled = vm.busy == null) { Text("Paste", color = C.accent) }
+                androidx.compose.material3.TextButton(onClick = { vm.makeWeekPlan() }, enabled = vm.prefs.hasKey && vm.busy == null) {
+                    Text("New (AI)", color = C.accent)
+                }
+            }
+        }
+    }
+
+    if (pasteOpen) {
+        var text by rememberSaveable { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pasteOpen = false }, containerColor = C.panel,
+            title = { Text("Paste your plan", color = C.text) },
+            text = {
+                Column {
+                    Text("Any format: a table, a message from your coach, your notes. " +
+                        (if (vm.prefs.hasKey) "The AI turns it into your week." else "Without an API key: one line per day, Monday first."),
+                        color = C.muted, fontSize = 14.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Field(text, { text = it }, "Your plan", minLines = 6,
+                        placeholder = "Mon: Gym push 60 min\nTue: Easy run 6 km\nWed: rest\n…")
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(enabled = text.isNotBlank(), onClick = {
+                    if (vm.prefs.hasKey) vm.makeWeekPlan(text.trim())
+                    else text.lines().filter { it.isNotBlank() }.take(7).forEachIndexed { i, l ->
+                        // drop a leading weekday ("Mon:", "Di -", "Monday") and keep the rest
+                        vm.setPlanDay(i, l.trim().replace(Regex("^(monday|tuesday|wednesday|thursday|friday|saturday|sunday|montag|dienstag|mittwoch|donnerstag|freitag|" +
+                            "samstag|sonntag|mon|tue|wed|thu|fri|sat|sun|mo|di|mi|do|fr|sa|so)\\b\\.?\\s*[:\\-]?\\s*",
+                            RegexOption.IGNORE_CASE), ""))
+                    }
+                    pasteOpen = false
+                }) { Text("Use this plan", color = C.accent) }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { pasteOpen = false }) { Text("Cancel") } },
+        )
+    }
+
+    if (editDay >= 0) {
+        val i = editDay
+        var text by rememberSaveable(i) { mutableStateOf(com.toplevel.app.data.WeekPlan.toLines(plan?.day(i).orEmpty())) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { editDay = -1 }, containerColor = C.panel,
+            title = { Text(listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")[i], color = C.text) },
+            text = {
+                Column {
+                    Text("One session per line, e.g. \"Running: Easy run 45 min\". Empty = rest day.", color = C.muted, fontSize = 14.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Field(text, { text = it }, "Sessions", minLines = 3)
+                }
+            },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { vm.setPlanDay(i, text); editDay = -1 }) {
+                Text("Save", color = C.accent) } },
+            dismissButton = {
+                Row {
+                    if (plan != null) androidx.compose.material3.TextButton(onClick = { vm.clearWeekPlan(); editDay = -1 }) {
+                        Text("Delete plan", color = C.bad) }
+                    androidx.compose.material3.TextButton(onClick = { editDay = -1 }) { Text("Cancel") }
+                }
+            },
+        )
     }
 }
 

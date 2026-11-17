@@ -21,6 +21,7 @@ A level-up style life tracker for Android (built for the Galaxy Z Fold), with Cl
 | **Discovery** | 3 songs picked from your music taste (open in **YouTube Music**) and 2 educational videos for your SRE and learning goals (open in YouTube), refreshed daily |
 | **Health Connect** | Steps, sleep, workouts and weight from Samsung Health or your watch, synced hourly. Measurable quests (e.g. "8,000 steps") complete themselves |
 | **Any sport** | Setup asks what you do (gym, running, cycling, football, yoga… or your own). Train only shows what fits: log a session in two taps (sport, minutes, km). Logged sessions count for workout quests, and quests use your sports |
+| **Weekly plan** | Train → "Your week": the AI builds a Mon–Sun plan from your sports, or paste the plan you already have (coach message, table, notes) and it's converted. Tap a day to edit. Today's quest is today's session; "Done" logs it in one tap |
 | **Calisthenics tracking** (if you pick Calisthenics) | Built for advanced athletes. Planche, front lever, back lever, handstand, muscle-up and HSPU, each with 7–8 stages up to elite (full planche push-up, maltese, one-arm FL…). You can rename the stages to your own progressions. Tap a stage to set your level; **Advance ▲** marks a new stage and pays EXP + Gold. Log holds/reps with +kg and notes (parallettes, RPE…), and see per-stage PRs, weekly volume and time-under-tension charts |
 | **Coach-built sessions** (optional, off by default) | Switch on to have Claude program a session from your stages, volume and recovery |
 | **Vault: Gold & rewards** | Quests, sessions, stage-ups, bosses, achievements and saving earn **Gold**. Add real rewards (e.g. "New desk €250, unlock at straddle planche"). To claim one you need the Gold, the € in your savings pot, its condition met, and a 72h cool-down (anti-impulse) |
@@ -34,7 +35,7 @@ A level-up style life tracker for Android (built for the Galaxy Z Fold), with Cl
 | **Fold layout** | Unfolded, the Coach stays open on the right next to any screen |
 | **Achievements & titles** | 23 achievements (incl. planche/front-lever milestones and savings); equip the titles they unlock on your status card (tap the player card) |
 | **Backup** | Export/restore everything as a file. Choose Google Drive in the picker for a cloud backup |
-| **Widgets** | **Daily Quests** (tap a quest to complete it from the home screen) and **Status** (level, stats, progress) |
+| **Widgets** | **Daily Quests** (tap a quest to complete it from the home screen), **Quiz** (a due question: show the answer, then "knew it" / "again"), **Food** and **Status** (level, stats, progress) |
 | **Notifications** | Morning quest briefing and an evening check-in reminder, at times you choose |
 
 All data is stored locally on your phone in a SQLite/Room database. The API key is stored only in the app's private storage.

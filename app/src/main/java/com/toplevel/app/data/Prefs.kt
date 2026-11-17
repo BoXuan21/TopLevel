@@ -103,7 +103,7 @@ class Prefs(ctx: Context) {
         "training_level" to trainingLevel.toString(), "equipment" to equipment, "calendar_write" to calendarWrite.toString(),
         "job_json" to jobJson, "jobs_done" to jobsDone, "theme" to theme, "dungeons_cleared" to dungeonsCleared.toString(),
         "budgets" to budgets, "month_budget" to monthBudget.toString(),
-        "sports" to sports, "sport_notes" to sportNotes, "quest_wishes" to questWishes,
+        "sports" to sports, "sport_notes" to sportNotes, "quest_wishes" to questWishes, "week_plan" to weekPlanJson,
     ) + Stat.entries.associate { "pts_${it.name}" to points(it).toString() }
 
     fun importMap(m: Map<String, String>) {
@@ -138,6 +138,7 @@ class Prefs(ctx: Context) {
         m["sports"]?.let { sports = it }
         m["sport_notes"]?.let { sportNotes = it }
         m["quest_wishes"]?.let { questWishes = it }
+        m["week_plan"]?.let { weekPlanJson = it }
         Stat.entries.forEach { s -> m["pts_${s.name}"]?.toIntOrNull()?.let { setPoints(s, it) } }
     }
 
@@ -213,6 +214,23 @@ class Prefs(ctx: Context) {
     var sportNotes: String
         get() = sp.getString("sport_notes", "") ?: ""
         set(v) = sp.edit().putString("sport_notes", v.trim()).apply()
+
+    /** The weekly sport plan (WeekPlan as JSON). */
+    var weekPlanJson: String
+        get() = sp.getString("week_plan", "") ?: ""
+        set(v) = sp.edit().putString("week_plan", v).apply()
+
+    /** Quiz widget: the card on screen, whether its answer is showing, cards put back today. */
+    var widgetCard: Long
+        get() = sp.getLong("widget_card", 0)
+        set(v) = sp.edit().putLong("widget_card", v).apply()
+    var widgetRevealed: Boolean
+        get() = sp.getBoolean("widget_revealed", false)
+        set(v) = sp.edit().putBoolean("widget_revealed", v).apply()
+    fun widgetSkipped(day: Long): Set<Long> =
+        (sp.getString("widget_skip_$day", "") ?: "").split(",").mapNotNull { it.toLongOrNull() }.toSet()
+    fun addWidgetSkipped(day: Long, id: Long) =
+        sp.edit().putString("widget_skip_$day", (widgetSkipped(day) + id).joinToString(",")).apply()
 
     /** Training minutes logged by hand per day (sessions without a watch). */
     fun sportMin(day: Long): Int = sp.getInt("sportmin_$day", 0)

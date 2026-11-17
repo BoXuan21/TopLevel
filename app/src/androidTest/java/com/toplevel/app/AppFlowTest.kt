@@ -1,5 +1,7 @@
 ﻿package com.toplevel.app
 
+import com.toplevel.app.data.saveWeekPlan
+
 
 import android.graphics.Bitmap
 import android.os.SystemClock
@@ -91,6 +93,13 @@ class AppFlowTest {
         p.kcalGoal = 2600; p.proteinGoal = 160; p.carbsGoal = 300; p.fatGoal = 80
         p.trackedLadders = "planche,frontlever"
         p.sports = "Calisthenics,Running"
+        repo.saveWeekPlan(com.toplevel.app.data.WeekPlan(List(7) { i ->
+            when (i % 3) {
+                0 -> listOf(com.toplevel.app.data.PlanSession("Calisthenics", "Planche + FL", 75, "Straddle holds 6×5s, FL raises 4×6"))
+                1 -> listOf(com.toplevel.app.data.PlanSession("Running", "Easy run 6 km", 40, "Zone 2"))
+                else -> emptyList()
+            }
+        }))
         p.questWishes = ""
         p.activeTitle = "Straddle Sovereign"
         p.savingsGoal = 200
@@ -158,6 +167,13 @@ class AppFlowTest {
         l.upsertPlan(Plan(PlanType.MUSIC, "Fred again.., Bicep, Four Tet, Kaytranada", now))
         l.insertMemory(Memory(ts = now, text = "On-call every 4th week — keep sessions short then"))
         l.insertSkill(SkillItem(title = "SLO design & error budgets", area = "SRE", status = "learning", createdAt = now))
+        repo.prefs.widgetCard = 0; repo.prefs.widgetRevealed = false
+        repo.db.grow().insertCards(listOf(
+            com.toplevel.app.data.Flashcard(front = "What does a 99.9% SLO allow per 30 days?", back = "About 43 minutes of downtime: that's the error budget.",
+                due = day, createdAt = now, topic = "SLO design & error budgets"),
+            com.toplevel.app.data.Flashcard(front = "Why alert on burn rate instead of raw errors?", back = "It shows how fast you spend the budget, so short spikes don't page you but real trouble does.",
+                due = day, createdAt = now, topic = "SLO design & error budgets"),
+        ))
         l.insertSkill(SkillItem(title = "eBPF for observability", area = "Linux", status = "todo", createdAt = now))
         l.insertSkill(SkillItem(title = "Terraform modules", area = "IaC", status = "learned", createdAt = now, learnedAt = now))
         l.insertLog(LogEntry(date = day, ts = now - 7_000_000, category = "work", text = "Cut alert noise on the payments cluster by 40%"))
@@ -262,6 +278,8 @@ class AppFlowTest {
         tab("Train")
         shot("train")
         // Log a new PR hold on the current planche stage
+        shot("train_week_plan")
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("LOG HOLD")); settle()
         compose.onAllNodesWithText("LOG HOLD").onFirst().performScrollTo().performClick(); settle()
         compose.onAllNodes(hasSetTextAction() and hasAnyAncestor(isDialog())).onFirst().performTextInput("11")
         shot("train_log_hold_dialog")
@@ -269,7 +287,9 @@ class AppFlowTest {
         waitFor("planche PR 11s") { (repo.db.vault().progressOf("planche")?.bestHoldSec ?: 0) >= 11 }
         settle(); dismissPopups(); shot("train_after_pr")
         // Any sport: log a 45 min run
-        compose.onNodeWithText("🏃 Running").performScrollTo().performClick(); settle()
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("LOG A SESSION")); settle()
+        compose.onNodeWithText("🏃 Running").performClick(); settle()
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("LOG 45 MIN RUNNING")); settle()
         compose.onNodeWithText("LOG 45 MIN RUNNING").performClick()
         waitFor("run logged") { repo.life.logsSince(day).any { it.text.startsWith("Running · 45 min") } }
         assertTrue(repo.prefs.sportMin(day) >= 45)

@@ -196,6 +196,7 @@ private fun Root(vm: AppViewModel, openTarget: String?, consumeTarget: () -> Uni
             "scan" -> { tab = FOOD; pages = ""; vm.pendingScan = true }
             "dungeon" -> { pages = ""; open("dungeons") }
             "status" -> { tab = HOME; pages = "" }
+            "learn" -> { pages = ""; tab = JOURNAL; vm.journalTab = "quiz" }
             else -> if (openTarget?.startsWith("more:") == true) { pages = ""; open(openTarget.substringAfter(":")) }
         }
         if (openTarget != null) consumeTarget()

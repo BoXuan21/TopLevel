@@ -66,6 +66,9 @@ import com.toplevel.app.data.abandonJob
 import com.toplevel.app.data.activeDungeon
 import com.toplevel.app.data.addCard
 import com.toplevel.app.data.logSession
+import com.toplevel.app.data.makeWeekPlan
+import com.toplevel.app.data.saveWeekPlan
+import com.toplevel.app.data.weekPlan
 import com.toplevel.app.data.QuizResult
 import com.toplevel.app.data.addLearnTopic
 import com.toplevel.app.data.checkAnswer
@@ -625,6 +628,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!com.toplevel.app.data.Sports.usesLadders(sports)) setLadders(emptyList())
         else if (trackedLadders.isBlank()) setLadders(listOf("planche", "frontlever"))
     }
+    // Weekly plan
+    var weekPlan by mutableStateOf(repo.weekPlan())
+        private set
+    fun makeWeekPlan(pasted: String = "") = run(if (pasted.isBlank()) "Building your week…" else "Reading your plan…") {
+        weekPlan = repo.makeWeekPlan(pasted)
+        message = "✓ Weekly plan saved. Your quests follow it from tomorrow (↻ for today)."
+        null
+    }
+    fun setPlanDay(i: Int, text: String) {
+        val p = (weekPlan ?: com.toplevel.app.data.WeekPlan()).withDay(i, com.toplevel.app.data.WeekPlan.parseLines(text, sports))
+        repo.saveWeekPlan(p); weekPlan = p
+    }
+    fun clearWeekPlan() { repo.saveWeekPlan(null); weekPlan = null }
+
     fun logSession(sport: String, minutes: Int, km: Float?, note: String) = io {
         repo.logSession(sport, minutes, km, note)
         message = "✓ $sport · $minutes min logged"

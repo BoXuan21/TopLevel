@@ -41,6 +41,101 @@ object Sports {
         entry.text.substringBefore(" · ", "").takeIf { entry.category == "training" && entry.text.contains(" min") && it.isNotBlank() }
 }
 
+// ───────────────────────── Weekly plan ─────────────────────────
+
+@kotlinx.serialization.Serializable
+data class PlanSession(val sport: String, val title: String, val minutes: Int = 0, val detail: String = "") {
+    fun label() = buildString {
+        append(title.ifBlank { sport })
+        if (minutes > 0) append(" · ").append(minutes).append(" min")
+    }
+}
+
+/** Monday..Sunday; an empty day is a rest day. */
+@kotlinx.serialization.Serializable
+data class WeekPlan(val days: List<List<PlanSession>> = List(7) { emptyList() }) {
+    fun day(i: Int) = days.getOrNull(i).orEmpty()
+    fun withDay(i: Int, s: List<PlanSession>) = WeekPlan(List(7) { if (it == i) s else day(it) })
+    fun isEmpty() = days.all { it.isEmpty() }
+
+    companion object {
+        val names = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+        fun todayIndex(): Int = java.time.LocalDate.now().dayOfWeek.value - 1
+
+        /** One session per line: "Gym: Push day 60 min" (sport before ':' optional, minutes optional). */
+        fun parseLines(text: String, sports: List<String>): List<PlanSession> = text.lines().map { it.trim() }
+            .filter { it.isNotBlank() && !it.equals("rest", true) && !it.equals("ruhetag", true) }.map { line ->
+                val min = Regex("(\\d+)\\s*(min|m\\b)", RegexOption.IGNORE_CASE).find(line)?.groupValues?.get(1)?.toIntOrNull()
+                    ?: Regex("(\\d+)\\s*h\\b", RegexOption.IGNORE_CASE).find(line)?.groupValues?.get(1)?.toIntOrNull()?.times(60) ?: 0
+                val (sport, rest) = if (':' in line) line.substringBefore(':').trim() to line.substringAfter(':').trim()
+                    else (sports.firstOrNull { line.contains(it.substringBefore(" /"), true) } ?: sports.firstOrNull() ?: "Training") to line
+                PlanSession(sport, rest.ifBlank { sport }, min)
+            }
+
+        fun toLines(s: List<PlanSession>) = s.joinToString("\n") {
+            "${it.sport}: ${it.title}" + if (it.minutes > 0 && !Regex("\\d+\\s*min").containsMatchIn(it.title)) " ${it.minutes} min" else ""
+        }
+    }
+}
+
+fun Repo.weekPlan(): WeekPlan? = try {
+    prefs.weekPlanJson.takeIf { it.isNotBlank() }?.let { Growth.json.decodeFromString(WeekPlan.serializer(), it) }
+        ?.takeIf { it.days.size == 7 }
+} catch (_: Exception) { null }
+
+fun Repo.saveWeekPlan(p: WeekPlan?) {
+    prefs.weekPlanJson = p?.let { Growth.json.encodeToString(WeekPlan.serializer(), it) } ?: ""
+}
+
+/** The plan as text, for the AI context and quests. */
+fun WeekPlan.describe(): String = WeekPlan.names.mapIndexed { i, n ->
+    "$n: " + day(i).joinToString("; ") { s -> "${s.sport} – ${s.label()}" + if (s.detail.isNotBlank()) " (${s.detail})" else "" }
+        .ifBlank { "rest" }
+}.joinToString("\n")
+
+/**
+ * AI: build the user's week. With [pasted] text it converts THEIR plan faithfully (any format: a table, a coach's message,
+ * notes); without, it designs a sensible week from their sports, words, level and stored training plan.
+ */
+suspend fun Repo.makeWeekPlan(pasted: String): WeekPlan {
+    val stored = life.plansNow().firstOrNull { it.type == PlanType.TRAINING }?.content?.take(PlanImport.MAX_CHARS).orEmpty()
+    val o = claude.askJson(
+        system = """You build the user's weekly sport plan for a simple training app.
+${if (pasted.isNotBlank()) "They pasted their own plan: convert it FAITHFULLY to the format (keep their sessions, days, exercises and times; " +
+            "don't invent extra sessions; if days aren't given, spread it sensibly over the week)."
+        else "Design a realistic week from their sports, their own words, level and any stored plan. Include rest days; never more than they can do."}
+- Only their sports (unless the pasted plan says otherwise).
+- title: short, e.g. "Push day", "Easy run 6 km", "Intervals 6×400 m". minutes: duration. detail: the key content in max 120 chars
+  (exercises × sets × reps, pace, …).
+- Write in the user's language (language of their notes / pasted plan).
+Return {"days":[{"day":"Mon","sessions":[{"sport":"Running","title":"...","minutes":45,"detail":"..."}]}, … all 7 days Mon–Sun, empty sessions = rest]}""",
+        user = buildString {
+            append("Sports: ${prefs.sportList.joinToString().ifBlank { "not set" }}\n")
+            if (prefs.sportNotes.isNotBlank()) append("In their words: ${prefs.sportNotes}\n")
+            append("Level: ${Prefs.Levels.trainingLevels.getOrNull(prefs.trainingLevel)?.first ?: "unknown"}\n")
+            if (prefs.equipment.isNotBlank()) append("Equipment: ${prefs.equipment}\n")
+            if (pasted.isNotBlank()) append("\n## Their pasted plan\n${pasted.take(PlanImport.MAX_CHARS)}\n")
+            else if (stored.isNotBlank()) append("\n## Their stored training plan\n$stored\n")
+        },
+        maxTokens = 3000,
+    ) as? kotlinx.serialization.json.JsonObject ?: throw IllegalStateException("Couldn't build a plan. Try again.")
+    val days = (o["days"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { it as? kotlinx.serialization.json.JsonObject }
+    val plan = List(7) { i ->
+        val d = days.firstOrNull { (com.toplevel.app.ai.Claude.str(it, "day") ?: "").take(3).equals(WeekPlan.names[i], true) } ?: days.getOrNull(i)
+        (d?.get("sessions") as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { it as? kotlinx.serialization.json.JsonObject }.map { s ->
+            PlanSession(
+                sport = com.toplevel.app.ai.Claude.str(s, "sport") ?: prefs.sportList.firstOrNull() ?: "Training",
+                title = com.toplevel.app.ai.Claude.str(s, "title").orEmpty(),
+                minutes = com.toplevel.app.ai.Claude.int(s, "minutes"),
+                detail = com.toplevel.app.ai.Claude.str(s, "detail").orEmpty(),
+            )
+        }
+    }
+    if (plan.all { it.isEmpty() }) throw IllegalStateException("Couldn't read a plan from that. Try again or write it yourself.")
+    if (pasted.isNotBlank()) life.upsertPlan(Plan(PlanType.TRAINING, pasted.trim(), System.currentTimeMillis()))
+    return WeekPlan(plan).also { saveWeekPlan(it) }
+}
+
 /** Log a session of any sport. Counts for workout quests like a watch workout does. */
 suspend fun Repo.logSession(sport: String, minutes: Int, km: Float?, note: String) {
     addLog("training", Sports.label(sport, minutes, km, note))
