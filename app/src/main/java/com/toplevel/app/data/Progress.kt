@@ -132,7 +132,8 @@ suspend fun Repo.progressionTip(exercise: String): String {
     }
     return claude.ask(
         "You are a strength coach. Using progressive overload, give the exact target for the user's NEXT session of this exercise " +
-            "(weight × reps × sets) and one technique/recovery cue. Max 4 short lines.",
+            "(weight × reps × sets) and one technique/recovery cue. Max 4 short lines, plain text (no markdown, no **bold**). " +
+            "Match the user's language.",
         "Exercise: $exercise\nHistory:\n${lines.ifBlank { "(none yet)" }}\n\nUser context:\n${buildContext().take(3000)}",
         400,
     )

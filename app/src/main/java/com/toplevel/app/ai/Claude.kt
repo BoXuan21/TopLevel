@@ -82,10 +82,20 @@ class Claude(private val prefs: Prefs) {
         }
     }
 
-    /** One-shot text answer. */
+    /**
+     * One-shot text answer. Current models think before answering and that counts against max_tokens,
+     * so small budgets could end with no text at all: use a floor, and retry bigger if the answer got cut off.
+     */
     suspend fun ask(system: String, user: String, maxTokens: Int = 1500, small: Boolean = false): String {
-        val res = send(system, buildJsonArray { add(userMsg(user)) }, maxTokens = maxTokens, small = small)
-        return textOf(res)
+        var budget = maxOf(maxTokens, MIN_TEXT_TOKENS)
+        repeat(2) {
+            val res = send(system, buildJsonArray { add(userMsg(user)) }, maxTokens = budget, small = small)
+            val text = textOf(res)
+            if (text.isNotBlank() && str(res, "stop_reason") != "max_tokens") return text
+            if (text.isNotBlank() && it == 1) return text // cut off twice: better a long answer than none
+            budget = (budget * 2).coerceAtMost(8000)
+        }
+        throw ClaudeException("Claude didn't send an answer. Try again.")
     }
 
     /** One-shot answer parsed as JSON. */
@@ -122,6 +132,7 @@ class Claude(private val prefs: Prefs) {
 
         /** Tight budgets were the main cause of cut-off (= invalid) JSON. Thinking also uses this budget. */
         const val MIN_JSON_TOKENS = 1500
+        const val MIN_TEXT_TOKENS = 1500
 
         private val lenient = Json { ignoreUnknownKeys = true; isLenient = true }
 
