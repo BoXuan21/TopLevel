@@ -35,6 +35,7 @@ A level-up style life tracker for Android (built for the Galaxy Z Fold), with Cl
 | **Fold layout** | Unfolded, the Coach stays open on the right next to any screen |
 | **Achievements & titles** | 23 achievements (incl. planche/front-lever milestones and savings); equip the titles they unlock on your status card (tap the player card) |
 | **Extras (off by default)** | To keep the app simple, the weekly boss, dungeons, job change, stat points, Vault & Gold, spending and the focus timer are switched off. Turn any of them on in Menu → More features; nothing is deleted when one is off |
+| **Auto-update** | The app checks this repo's latest GitHub release (on start and every 6 h on Wi-Fi), downloads `TopLevel.apk` and installs it. The first time, Android asks you once to allow TopLevel to install apps and to confirm; after that updates go through on their own. Switch it off or "Check now" in Settings → Updates |
 | **Backup** | Export/restore everything as a file. Choose Google Drive in the picker for a cloud backup |
 | **Widgets** | **Daily Quests** (tap a quest to complete it from the home screen), **Quiz** (a due question: show the answer, then "knew it" / "again"), **Food** and **Status** (level, stats, progress) |
 | **Notifications** | Morning quest briefing and an evening check-in reminder, at times you choose |

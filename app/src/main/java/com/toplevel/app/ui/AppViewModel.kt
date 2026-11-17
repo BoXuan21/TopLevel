@@ -196,6 +196,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         water = prefs.water(day)
         growthOnStart()
         focusEnd = prefs.focusEnd
+        // While the app is open, Android can show the install prompt right away: check at most every 6 h
+        val pm = getApplication<android.app.Application>().packageManager
+        val permissionJustGiven = prefs.updateWaitsForPermission && pm.canRequestPackageInstalls()
+        if (permissionJustGiven) prefs.updateWaitsForPermission = false
+        if (prefs.autoUpdate && (permissionJustGiven || System.currentTimeMillis() - prefs.lastUpdateCheck > 6 * 3_600_000L))
+            checkUpdate(quiet = true)
         viewModelScope.launch(Dispatchers.IO) {
             healthConnected = HealthSync.granted(getApplication())
             if (healthConnected) HealthSync.sync(repo)
@@ -628,6 +634,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!com.toplevel.app.data.Sports.usesLadders(sports)) setLadders(emptyList())
         else if (trackedLadders.isBlank()) setLadders(listOf("planche", "frontlever"))
     }
+    // Self-update from GitHub releases
+    var autoUpdate by mutableStateOf(prefs.autoUpdate)
+        private set
+    var updateStatus by mutableStateOf<String?>(null)
+        private set
+    var updateChecking by mutableStateOf(false)
+        private set
+    val versionName: String = try {
+        getApplication<android.app.Application>().let { it.packageManager.getPackageInfo(it.packageName, 0).versionName } ?: "?"
+    } catch (_: Exception) { "?" }
+    fun updateAutoUpdate(on: Boolean) {
+        prefs.autoUpdate = on; autoUpdate = on
+        com.toplevel.app.update.Updater.schedule(getApplication(), on)
+    }
+    fun checkUpdate(quiet: Boolean = false) {
+        if (updateChecking) return
+        updateChecking = true
+        viewModelScope.launch {
+            val s = try { withContext(Dispatchers.IO) { com.toplevel.app.update.Updater.checkAndInstall(getApplication(), manual = !quiet) } }
+                catch (e: Exception) { "Update failed: ${e.message}" }
+            prefs.lastUpdateCheck = System.currentTimeMillis()
+            updateChecking = false
+            // A quiet check (on app start) only speaks up when something happens
+            if (!quiet || s.startsWith("Installing") || s.startsWith("Update failed")) updateStatus = s
+        }
+    }
+
     // Extras (optional game systems), bumped to redraw after a toggle
     var extrasVersion by mutableIntStateOf(0)
         private set

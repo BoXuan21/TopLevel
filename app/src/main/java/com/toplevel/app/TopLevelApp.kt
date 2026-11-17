@@ -11,5 +11,6 @@ class TopLevelApp : Application() {
         Notifier.createChannel(this)
         val repo = Repo.get(this)
         Scheduler.schedule(this, repo.prefs.morningHour, repo.prefs.eveningHour)
+        com.toplevel.app.update.Updater.schedule(this, repo.prefs.autoUpdate)
     }
 }

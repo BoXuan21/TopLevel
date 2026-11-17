@@ -184,6 +184,8 @@ fun SetupScreen(
             }
         }
 
+        item { UpdatePanel(vm) }
+
         item {
             Panel(title = "Backup") {
                 val last = vm.prefs.lastBackup
@@ -321,5 +323,32 @@ private fun SoundPanel(vm: AppViewModel) {
         Text("\"Dark theme\" is an original loop made by the app. \"My track\" plays any audio file on your phone " +
             "(e.g. a song you own) on repeat while the app is open.", color = C.muted, fontSize = 12.sp,
             modifier = Modifier.padding(top = 6.dp))
+    }
+}
+
+/** Auto-update from GitHub: switch, "check now", and the one-time "allow installs" step. */
+@Composable
+private fun UpdatePanel(vm: AppViewModel) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val canInstall = ctx.packageManager.canRequestPackageInstalls()
+    Panel(title = "Updates", action = {
+        Switch(checked = vm.autoUpdate, onCheckedChange = { vm.updateAutoUpdate(it) },
+            colors = SwitchDefaults.colors(checkedTrackColor = C.accent))
+    }) {
+        Text("Version ${vm.versionName} · " + if (vm.autoUpdate) "new builds install automatically (on Wi-Fi)" else "automatic updates off",
+            color = C.muted, fontSize = 13.sp)
+        vm.updateStatus?.let { Text(it, color = C.accentSoft, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 4.dp)) }
+        if (!canInstall) {
+            Spacer(Modifier.height(6.dp))
+            Text("One-time step: allow TopLevel to install its own updates.", color = C.warn, fontSize = 13.sp)
+            Spacer(Modifier.height(6.dp))
+            GhostButton("Allow updates", color = C.warn) {
+                ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    android.net.Uri.parse("package:${ctx.packageName}")))
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        GhostButton(if (vm.updateChecking) "Checking…" else "Check now", enabled = !vm.updateChecking) { vm.checkUpdate() }
     }
 }

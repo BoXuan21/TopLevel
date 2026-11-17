@@ -242,6 +242,17 @@ class Prefs(ctx: Context) {
         get() = (sp.getString("extras", "") ?: "").split(",").filter { it.isNotBlank() }.toSet()
         set(v) = sp.edit().putString("extras", v.joinToString(",")).apply()
 
+    /** Install new builds from GitHub automatically. */
+    var autoUpdate: Boolean
+        get() = sp.getBoolean("auto_update", true)
+        set(v) = sp.edit().putBoolean("auto_update", v).apply()
+    var updateWaitsForPermission: Boolean
+        get() = sp.getBoolean("update_waits_perm", false)
+        set(v) = sp.edit().putBoolean("update_waits_perm", v).apply()
+    var lastUpdateCheck: Long
+        get() = sp.getLong("last_update_check", 0)
+        set(v) = sp.edit().putLong("last_update_check", v).apply()
+
     /** The weekly sport plan (WeekPlan as JSON). */
     var weekPlanJson: String
         get() = sp.getString("week_plan", "") ?: ""
