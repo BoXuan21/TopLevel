@@ -52,18 +52,24 @@ import androidx.compose.ui.unit.sp
 import com.toplevel.app.R
 import com.toplevel.app.data.Stat
 
-/** "System window" palette: near-black blue, electric cyan glow. */
+/** "System window" palette: near-black violet base with a purple glow (default). Blue and others are selectable. */
 object C {
-    val bg = Color(0xFF02050C)
-    val bg2 = Color(0xFF050D1E)
-    val panel = Color(0xFF061022)
-    val panel2 = Color(0xFF0A1A36)
-
-    /** Accent palette: border, accent, soft accent, glow. Switchable (themes unlocked by job changes). */
-    class Palette(val border: Color, val accent: Color, val soft: Color, val glow: Color)
+    /** Base (backgrounds, text) + accent (border, accent, soft accent, glow). Switchable in Status → Colour theme. */
+    class Palette(
+        val border: Color, val accent: Color, val soft: Color, val glow: Color,
+        val bg: Color = Color(0xFF06030E), val bg2: Color = Color(0xFF120828),
+        val panel: Color = Color(0xFF0E0820), val panel2: Color = Color(0xFF1B0F3A),
+        val text: Color = Color(0xFFEEE6FF), val muted: Color = Color(0xFF8C7FB8),
+    )
     val palettes = mapOf(
-        "system" to Palette(Color(0xFF1B4E8F), Color(0xFF2CC4FF), Color(0xFFA6EBFF), Color(0xFF1E9BFF)),
-        "monarch" to Palette(Color(0xFF4A2E8F), Color(0xFFA77BFF), Color(0xFFDCCBFF), Color(0xFF7A3CFF)),
+        // Default: dark purple, deep violet glow
+        "system" to Palette(Color(0xFF4F2A99), Color(0xFFA066FF), Color(0xFFDCC8FF), Color(0xFF7B2EFF)),
+        // The original blue look
+        "azure" to Palette(Color(0xFF1B4E8F), Color(0xFF2CC4FF), Color(0xFFA6EBFF), Color(0xFF1E9BFF),
+            bg = Color(0xFF02050C), bg2 = Color(0xFF050D1E), panel = Color(0xFF061022), panel2 = Color(0xFF0A1A36),
+            text = Color(0xFFE4F3FF), muted = Color(0xFF6E89AD)),
+        "monarch" to Palette(Color(0xFF4A2E8F), Color(0xFFA77BFF), Color(0xFFDCCBFF), Color(0xFF7A3CFF),
+            bg = Color(0xFF030206), bg2 = Color(0xFF0A0614), panel = Color(0xFF09060F), panel2 = Color(0xFF150E24)),
         "crimson" to Palette(Color(0xFF8F1B33), Color(0xFFFF4D6D), Color(0xFFFFC2CC), Color(0xFFFF2E4D)),
         "gold" to Palette(Color(0xFF8F6A1B), Color(0xFFFFC14D), Color(0xFFFFE7B3), Color(0xFFFFA000)),
         "emerald" to Palette(Color(0xFF1B8F64), Color(0xFF3DF2B0), Color(0xFFB8FFE6), Color(0xFF00D98B)),
@@ -71,12 +77,16 @@ object C {
     var palette by androidx.compose.runtime.mutableStateOf(palettes.getValue("system"))
     fun applyTheme(id: String) { palette = palettes[id] ?: palettes.getValue("system") }
 
+    val bg get() = palette.bg
+    val bg2 get() = palette.bg2
+    val panel get() = palette.panel
+    val panel2 get() = palette.panel2
     val border get() = palette.border
     val accent get() = palette.accent
     val accentSoft get() = palette.soft
     val glow get() = palette.glow
-    val text = Color(0xFFE4F3FF)
-    val muted = Color(0xFF6E89AD)
+    val text get() = palette.text
+    val muted get() = palette.muted
     val good = Color(0xFF3DF2B0)
     val warn = Color(0xFFFFC14D)
     val bad = Color(0xFFFF4D6D)

@@ -33,6 +33,7 @@ A level-up style life tracker for Android (built for the Galaxy Z Fold), with Cl
 | **Focus blocks** | 25/50/90-minute deep-work timer that pays Discipline EXP |
 | **Voice input** | 🎙 on the check-in, journal, food and coach fields |
 | **Fold layout** | Unfolded, the Coach stays open on the right next to any screen |
+| **Look** | Dark purple "Shadow Violet" by default (app, widgets, icon). The old blue is "System Blue" in Status → Colour theme |
 | **Achievements & titles** | 23 achievements (incl. planche/front-lever milestones and savings); equip the titles they unlock on your status card (tap the player card) |
 | **Extras (off by default)** | To keep the app simple, the weekly boss, dungeons, job change, stat points, Money & Gold and the focus timer are switched off. Turn any of them on in Menu → More features; nothing is deleted when one is off |
 | **Pull to refresh** | Pull down on any screen to sync Samsung Health, the calendar, streak, widgets and the advice right away |

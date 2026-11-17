@@ -64,12 +64,12 @@ object Growth {
 object Themes {
     data class T(val id: String, val name: String)
     val all = listOf(
-        T("system", "System Blue"), T("monarch", "Shadow Monarch"), T("crimson", "Crimson"),
+        T("system", "Shadow Violet"), T("azure", "System Blue"), T("monarch", "Monarch Black"), T("crimson", "Crimson"),
         T("gold", "Gold"), T("emerald", "Emerald"),
     )
     fun unlocked(p: Prefs): List<T> {
         val done = p.jobsDone.split(",").filter { it.isNotBlank() }
-        val ids = setOf("system") + Jobs.all.filter { it.id in done }.map { it.theme } + if (done.any { it.startsWith("custom") }) setOf("monarch") else emptySet()
+        val ids = setOf("system", "azure") + Jobs.all.filter { it.id in done }.map { it.theme } + if (done.any { it.startsWith("custom") }) setOf("monarch") else emptySet()
         return all.filter { it.id in ids }
     }
 }

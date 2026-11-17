@@ -55,12 +55,12 @@ object Widgets {
     }
 }
 
-private val BG = Color(0xF20A1020)
-private val PANEL = Color(0xFF111A2E)
-private val ACCENT = Color(0xFF3FA9FF)
-private val ACCENT_SOFT = Color(0xFF9BD8FF)
-private val MUTED = Color(0xFF7D8BA6)
-private val TEXT = Color(0xFFE8F1FF)
+private val BG = Color(0xF20B0618)
+private val PANEL = Color(0xFF1B0F3A)
+private val ACCENT = Color(0xFFA066FF)
+private val ACCENT_SOFT = Color(0xFFDCC8FF)
+private val MUTED = Color(0xFF8C7FB8)
+private val TEXT = Color(0xFFEEE6FF)
 private val DONE = Color(0xFF4BE3A0)
 
 private fun style(size: Int, color: Color = TEXT, bold: Boolean = false) =

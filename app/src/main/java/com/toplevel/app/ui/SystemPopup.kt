@@ -180,7 +180,7 @@ private fun SystemWindow(p: Popup, onDone: () -> Unit) {
                 }
                 .glow(color, WindowShape, radius = 22.dp, strength = pulse, width = 1.5.dp)
                 .clip(WindowShape)
-                .background(Brush.verticalGradient(listOf(Color(0xF00A1A3A), Color(0xF5040A18))))
+                .background(Brush.verticalGradient(listOf(C.panel2.copy(alpha = 0.94f), C.bg.copy(alpha = 0.96f))))
                 .drawBehind {
                     // scanlines
                     val gap = 4.dp.toPx()
