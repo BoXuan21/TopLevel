@@ -23,11 +23,20 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.onLast
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.toplevel.app.data.AchievementUnlock
+import com.toplevel.app.data.BackupFile
+import com.toplevel.app.data.Expense
+import com.toplevel.app.data.Growth
+import com.toplevel.app.data.exportBackup
+import com.toplevel.app.data.importBackup
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import com.toplevel.app.data.BodyEntry
 import com.toplevel.app.data.ChatMessage
 import com.toplevel.app.data.DiscoverItem
@@ -429,6 +438,116 @@ class AppFlowTest {
             assertEquals(295f, repo.db.vault().potNow(), 0.01f) // 340 − 45
             // −150 for the rings, +25 from the "Well Earned" achievement it unlocks
             assertEquals(1240 - 150 + 25, repo.db.vault().goldBalanceNow())
+        }
+    }
+
+    // ───────────────────────── build 23 features ─────────────────────────
+
+    private fun field(label: String) = compose.onAllNodes(hasSetTextAction() and hasText(label, substring = true)).onFirst()
+
+    /** Spending + Vault are one page now; build 21's spending switch alone must still open it. */
+    @Test fun moneyPageSpendAndSkip() {
+        repo.prefs.extrasOn = setOf("money")
+        dismissPopups()
+        more("Money"); shot("money")
+        // Spent: €12.50 transport
+        field("Amount €").performTextReplacement("12.5")
+        tapText("Transport")
+        tapText("LOG SPENDING")
+        waitFor("expense logged") { repo.db.grow().expensesAll().any { it.amountEur == 12.5f && it.category == "Transport" } }
+        settle(); dismissPopups()
+        // Didn't buy: €30 sneakers go to the pot
+        val pot = runBlocking { repo.db.vault().potNow() }
+        tapText("Didn't buy"); settle()
+        field("Amount €").performTextReplacement("30")
+        field("What didn't you buy?").performTextReplacement("Sneakers")
+        tapText("INTO THE POT")
+        waitFor("pot +€30") { repo.db.vault().potNow() >= pot + 29.9f }
+        settle(); dismissPopups()
+        scrollTo("Sneakers"); compose.onAllNodesWithText("Sneakers").onFirst().assertExists()
+        shot("money_history")
+        // Gold and rewards are on the same page
+        scrollTo("REWARDS"); compose.onAllNodesWithText("REWARDS").onFirst().assertExists()
+    }
+
+    @Test fun shopOpensFreePriceComparison() {
+        repo.prefs.shopRecent = ""
+        dismissPopups()
+        more("Shop"); shot("shop")
+        field("What are you looking for?").performTextReplacement("RTX 5070"); settle()
+        scrollTo("Kleinanzeigen"); compose.onAllNodesWithText("Kleinanzeigen").onFirst().assertExists()
+        shot("shop_query")
+        // Last: this leaves the app for the browser
+        tapText("COMPARE ON GEIZHALS")
+        waitFor("search remembered") { repo.prefs.shopRecent.lines().firstOrNull() == "RTX 5070" }
+    }
+
+    @Test fun skillTreePlusButton() {
+        dismissPopups()
+        more("Skill tree")
+        compose.onAllNodes(hasContentDescription("Add skill")).onFirst().performClick(); settle()
+        shot("skill_add_dialog")
+        field("Skill or topic").performTextReplacement("Kubernetes operators")
+        compose.onAllNodesWithText("Add").onLast().performClick()
+        waitFor("skill added") { repo.life.skillsNow().any { it.title == "Kubernetes operators" } }
+        settle(); shot("skills_after_add")
+    }
+
+    @Test fun coachCanFixStatPointsAndExp() {
+        runBlocking {
+            Stat.entries.forEach { repo.prefs.setPoints(it, 0) }
+            val earned = Growth.pointsEarned(Leveling.levelFor(totalXp()))
+            val ok = repo.runTool("set_stat_points", buildJsonObject { put("STR", 3); put("INT", 2); put("reason", "test") })
+            assertTrue(ok, ok.startsWith("✓"))
+            assertEquals(3, repo.prefs.points(Stat.STRENGTH))
+            assertEquals(2, repo.prefs.points(Stat.INTELLECT))
+            // More points than earned is refused and changes nothing
+            val tooMany = repo.runTool("set_stat_points", buildJsonObject { put("DIS", earned + 1); put("reason", "x") })
+            assertTrue(tooMany, tooMany.startsWith("✗"))
+            assertEquals(0, repo.prefs.points(Stat.DISCIPLINE))
+            // EXP correction, without the stat-point boost
+            suspend fun int() = repo.game.statTotalsNow().first { it.stat == Stat.INTELLECT }.total
+            val before = int()
+            assertTrue(repo.runTool("adjust_stat_exp", buildJsonObject { put("stat", "INT"); put("amount", -40); put("reason", "double count") }).startsWith("✓"))
+            assertEquals(before - 40, int())
+            // The coach sees them
+            val c = repo.buildContext()
+            assertTrue(c.contains("## Stat points") && c.contains("STR 3"))
+            Stat.entries.forEach { repo.prefs.setPoints(it, 0) }
+        }
+    }
+
+    @Test fun pullDownRefreshes() {
+        dismissPopups()
+        var before = -1L
+        scenario.onActivity { before = it.vm.lastRefreshAt }
+        compose.onAllNodes(hasScrollAction()).onFirst().performTouchInput { swipeDown() }
+        var after = before
+        compose.waitUntil(10_000) { scenario.onActivity { after = it.vm.lastRefreshAt }; after > before }
+        shot("pull_refresh")
+        compose.onNodeWithText("BOXUAN").assertExists()
+    }
+
+    /** A backup made with build 21 (spending on its own switch, no shop history) restores cleanly. */
+    @Test fun backupFromBuild21Restores() {
+        runBlocking {
+            val b21 = BackupFile(exportedAt = now, prefs = mapOf("extras" to "money,boss", "name" to "BoXuan"),
+                expenses = listOf(Expense(ts = now, date = day, amountEur = 9.5f, category = "Fun")),
+                savings = listOf(SavingsEntry(ts = now, date = day, amountEur = 40f, note = "old")))
+            val f = File(ctx.cacheDir, "build21.json")
+            f.writeText(kotlinx.serialization.json.Json.encodeToString(BackupFile.serializer(), b21))
+            repo.importBackup(android.net.Uri.fromFile(f))
+            assertTrue(repo.prefs.extra("vault") && repo.prefs.extra("money"))
+            assertEquals(40f, repo.db.vault().potNow(), 0.01f)
+            assertEquals(listOf(9.5f), repo.db.grow().expensesAll().map { it.amountEur })
+            // New data survives a backup round trip
+            repo.prefs.shopRecent = "RTX 5070"
+            val out = File(ctx.cacheDir, "roundtrip.json")
+            repo.exportBackup(android.net.Uri.fromFile(out))
+            repo.prefs.shopRecent = ""
+            repo.importBackup(android.net.Uri.fromFile(out))
+            assertEquals("RTX 5070", repo.prefs.shopRecent)
+            assertEquals(40f, repo.db.vault().potNow(), 0.01f)
         }
     }
 }

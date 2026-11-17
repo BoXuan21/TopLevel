@@ -72,7 +72,7 @@ import com.toplevel.app.ui.tap
 
 class MainActivity : ComponentActivity() {
 
-    private val vm: AppViewModel by viewModels()
+    internal val vm: AppViewModel by viewModels()
     private var openTarget by mutableStateOf<String?>(null)
 
     private val permLauncher = registerForActivityResult(

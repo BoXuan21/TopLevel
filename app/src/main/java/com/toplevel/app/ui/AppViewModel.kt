@@ -231,6 +231,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Pull-down on a screen: sync health + calendar, re-check the day, streak and advice. */
     var refreshing by mutableStateOf(false)
         private set
+    /** When the last pull-to-refresh finished. */
+    var lastRefreshAt by mutableLongStateOf(0L)
+        private set
     fun pullRefresh() {
         if (refreshing) return
         refreshing = true
@@ -253,6 +256,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 message = e.message
             } finally {
                 refreshing = false
+                lastRefreshAt = System.currentTimeMillis()
             }
         }
     }

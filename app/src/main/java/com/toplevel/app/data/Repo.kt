@@ -628,7 +628,7 @@ Return {"videos":[{"title":"...","channel":"...","why":"one short line","query":
         return JsonArray(allChatTools.filter { str(it as? JsonObject, "name") !in off })
     }
 
-    private suspend fun runTool(name: String, input: JsonObject): String = try {
+    internal suspend fun runTool(name: String, input: JsonObject): String = try {
         when (name) {
             "update_plan" -> {
                 val type = str(input, "type")?.lowercase() ?: "goals"
