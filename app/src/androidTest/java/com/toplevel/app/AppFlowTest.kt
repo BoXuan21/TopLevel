@@ -464,7 +464,7 @@ class AppFlowTest {
         tapText("INTO THE POT")
         waitFor("pot +€30") { repo.db.vault().potNow() >= pot + 29.9f }
         settle(); dismissPopups()
-        scrollTo("Sneakers"); compose.onAllNodesWithText("Sneakers").onFirst().assertExists()
+        scrollTo("Skipped: Sneakers"); compose.onAllNodesWithText("Skipped: Sneakers").onFirst().assertExists()
         shot("money_history")
         // Gold and rewards are on the same page
         scrollTo("REWARDS"); compose.onAllNodesWithText("REWARDS").onFirst().assertExists()
