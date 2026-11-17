@@ -1,44 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Two crossed daggers with a soft glow (original design). Each dagger is drawn pointing up, then rotated. -->
+<!-- Two crossed jagged daggers with a glow (original design). Each dagger is drawn pointing up, then rotated. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
+    <!-- Spark behind the crossing -->
+    <path android:fillColor="#553FA9FF"
+        android:pathData="M54,40 L57,51 L68,54 L57,57 L54,68 L51,57 L40,54 L51,51 Z" />
+
     <!-- Dagger 1: tip to the top right, violet -->
-    <group android:pivotX="54" android:pivotY="54" android:rotation="38">
+    <group android:pivotX="54" android:pivotY="54" android:rotation="40">
         <!-- glow -->
-        <path android:strokeColor="#448B5CFF" android:strokeWidth="6" android:strokeLineJoin="round" android:fillColor="#00000000"
-            android:pathData="M54,22 L58.5,33 L58,60 L50,60 L49.5,33 Z" />
-        <!-- blade -->
-        <path android:fillColor="#FFD9CCFF" android:strokeColor="#FF8B5CFF" android:strokeWidth="1.4" android:strokeLineJoin="round"
-            android:pathData="M54,22 L58.5,33 L58,60 L50,60 L49.5,33 Z" />
+        <path android:strokeColor="#558B5CFF" android:strokeWidth="5" android:strokeLineJoin="miter" android:fillColor="#00000000"
+            android:pathData="M54,20 L58,29 L61,31 L58,35 L61,39 L58,42 L61,46 L58,49 L60.5,53 L58.5,56 L58.5,60
+                L49.5,60 L49.5,53 L46,49.5 L49.5,47 L49.5,34 Z" />
+        <!-- serrated blade (teeth on the right, a back hook on the left) -->
+        <path android:fillColor="#FFE2D8FF" android:strokeColor="#FF8B5CFF" android:strokeWidth="1.3" android:strokeLineJoin="miter"
+            android:pathData="M54,20 L58,29 L61,31 L58,35 L61,39 L58,42 L61,46 L58,49 L60.5,53 L58.5,56 L58.5,60
+                L49.5,60 L49.5,53 L46,49.5 L49.5,47 L49.5,34 Z" />
         <!-- fuller -->
-        <path android:strokeColor="#FF8B5CFF" android:strokeWidth="1.2" android:strokeLineCap="round" android:fillColor="#00000000"
-            android:pathData="M54,30 L54,56" />
-        <!-- guard -->
-        <path android:fillColor="#FF8B5CFF" android:pathData="M42,60 L66,60 L63,64.5 L45,64.5 Z" />
-        <!-- grip -->
-        <path android:fillColor="#FF2A1F55" android:strokeColor="#FF8B5CFF" android:strokeWidth="1.2"
-            android:pathData="M51.5,64.5 L56.5,64.5 L56,78 L52,78 Z" />
-        <!-- pommel -->
-        <path android:fillColor="#FFD9CCFF" android:strokeColor="#FF8B5CFF" android:strokeWidth="1.2"
-            android:pathData="M54,77.5 L57.5,81.5 L54,85.5 L50.5,81.5 Z" />
+        <path android:strokeColor="#FF8B5CFF" android:strokeWidth="1.1" android:strokeLineCap="round" android:fillColor="#00000000"
+            android:pathData="M53.5,28 L53.5,57" />
+        <!-- spiked guard: wings swept up into points -->
+        <path android:fillColor="#FF8B5CFF"
+            android:pathData="M38,53 L46,60 L62,60 L70,53 L66,64.5 L58,63 L50,63 L42,64.5 Z" />
+        <!-- wrapped grip -->
+        <path android:fillColor="#FF2A1F55" android:strokeColor="#FF8B5CFF" android:strokeWidth="1.1"
+            android:pathData="M51.5,63 L56.5,63 L56,77 L52,77 Z" />
+        <path android:strokeColor="#FF8B5CFF" android:strokeWidth="1" android:fillColor="#00000000"
+            android:pathData="M51.8,67 L56.2,69 M51.9,71 L56.1,73" />
+        <!-- spike pommel -->
+        <path android:fillColor="#FFE2D8FF" android:strokeColor="#FF8B5CFF" android:strokeWidth="1.1"
+            android:pathData="M54,76.5 L57.5,79.5 L54,87 L50.5,79.5 Z" />
     </group>
 
     <!-- Dagger 2: tip to the top left, system blue (drawn on top) -->
-    <group android:pivotX="54" android:pivotY="54" android:rotation="-38">
-        <path android:strokeColor="#443FA9FF" android:strokeWidth="6" android:strokeLineJoin="round" android:fillColor="#00000000"
-            android:pathData="M54,22 L58.5,33 L58,60 L50,60 L49.5,33 Z" />
-        <path android:fillColor="#FFCFEBFF" android:strokeColor="#FF3FA9FF" android:strokeWidth="1.4" android:strokeLineJoin="round"
-            android:pathData="M54,22 L58.5,33 L58,60 L50,60 L49.5,33 Z" />
-        <path android:strokeColor="#FF3FA9FF" android:strokeWidth="1.2" android:strokeLineCap="round" android:fillColor="#00000000"
-            android:pathData="M54,30 L54,56" />
-        <path android:fillColor="#FF3FA9FF" android:pathData="M42,60 L66,60 L63,64.5 L45,64.5 Z" />
-        <path android:fillColor="#FF0E2A4A" android:strokeColor="#FF3FA9FF" android:strokeWidth="1.2"
-            android:pathData="M51.5,64.5 L56.5,64.5 L56,78 L52,78 Z" />
-        <path android:fillColor="#FFCFEBFF" android:strokeColor="#FF3FA9FF" android:strokeWidth="1.2"
-            android:pathData="M54,77.5 L57.5,81.5 L54,85.5 L50.5,81.5 Z" />
+    <group android:pivotX="54" android:pivotY="54" android:rotation="-40">
+        <path android:strokeColor="#553FA9FF" android:strokeWidth="5" android:strokeLineJoin="miter" android:fillColor="#00000000"
+            android:pathData="M54,20 L50,29 L47,31 L50,35 L47,39 L50,42 L47,46 L50,49 L47.5,53 L49.5,56 L49.5,60
+                L58.5,60 L58.5,53 L62,49.5 L58.5,47 L58.5,34 Z" />
+        <path android:fillColor="#FFD6F0FF" android:strokeColor="#FF3FA9FF" android:strokeWidth="1.3" android:strokeLineJoin="miter"
+            android:pathData="M54,20 L50,29 L47,31 L50,35 L47,39 L50,42 L47,46 L50,49 L47.5,53 L49.5,56 L49.5,60
+                L58.5,60 L58.5,53 L62,49.5 L58.5,47 L58.5,34 Z" />
+        <path android:strokeColor="#FF3FA9FF" android:strokeWidth="1.1" android:strokeLineCap="round" android:fillColor="#00000000"
+            android:pathData="M54.5,28 L54.5,57" />
+        <path android:fillColor="#FF3FA9FF"
+            android:pathData="M38,53 L46,60 L62,60 L70,53 L66,64.5 L58,63 L50,63 L42,64.5 Z" />
+        <path android:fillColor="#FF0E2A4A" android:strokeColor="#FF3FA9FF" android:strokeWidth="1.1"
+            android:pathData="M51.5,63 L56.5,63 L56,77 L52,77 Z" />
+        <path android:strokeColor="#FF3FA9FF" android:strokeWidth="1" android:fillColor="#00000000"
+            android:pathData="M51.8,67 L56.2,69 M51.9,71 L56.1,73" />
+        <path android:fillColor="#FFD6F0FF" android:strokeColor="#FF3FA9FF" android:strokeWidth="1.1"
+            android:pathData="M54,76.5 L57.5,79.5 L54,87 L50.5,79.5 Z" />
     </group>
 </vector>
