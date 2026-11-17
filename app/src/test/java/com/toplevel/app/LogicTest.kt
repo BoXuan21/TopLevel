@@ -11,7 +11,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import kotlinx.serialization.json.jsonObject
 import org.junit.Test
 
 class LogicTest {
@@ -232,21 +231,11 @@ class LogicTest {
         assertNull(C.extractJsonText("{\"a\":1, \"b\":")) // truncated -> retry
     }
 
-    @Test fun shopOffersSortedAndCleaned() {
-        val o = kotlinx.serialization.json.Json.parseToJsonElement("""{"product":"RTX 5070","summary":"x",
-            "offers":[{"shop":"A","price_eur":"549,90 €","shipping_eur":5,"url":"https://a.de/p"},
-                      {"shop":"B","price_eur":539,"shipping_eur":20,"url":"https://b.de/p","in_stock":"false"},
-                      {"shop":"C","price_eur":530,"url":"https://c.de/p","condition":"Used"},
-                      {"shop":"D","price_eur":0,"url":"https://d.de"},
-                      {"shop":"E","price_eur":400,"url":"not a link"}],
-            "alternatives":[{"name":"RX 9070","approx_eur":"560"}]}""").jsonObject
-        val r = com.toplevel.app.data.Shop.parse("rtx 5070", o)
-        assertEquals(listOf("C", "A", "B"), r.offers.map { it.shop })
-        assertEquals(554.9, r.offers[1].total, 0.001)
-        assertEquals("used", r.offers[0].condition)
-        assertEquals(false, r.offers[2].inStock)
-        assertEquals("C", r.cheapest?.shop)
-        assertEquals(560.0, r.alternatives.single().approx!!, 0.001)
+    @Test fun shopLinksEncodeQuery() {
+        val de = com.toplevel.app.data.Shop.sites("DE")
+        assertEquals("https://geizhals.de/?fs=RTX+5070+Ti&sort=p", de.first().url("RTX 5070 Ti"))
+        assertTrue(com.toplevel.app.data.Shop.sites("AT").first().url("x").startsWith("https://geizhals.at/"))
+        assertTrue(de.first { it.id == "amazon" }.url("a&b").contains("k=a%26b"))
     }
 
     @Test fun shopRecentSearches() {

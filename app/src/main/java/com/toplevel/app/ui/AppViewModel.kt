@@ -108,7 +108,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
-import com.toplevel.app.data.searchShop
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
@@ -254,26 +253,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 message = e.message
             } finally {
                 refreshing = false
-            }
-        }
-    }
-
-    // Shop: cheapest offers found on the web
-    var shopResult by mutableStateOf<com.toplevel.app.data.ShopResult?>(null)
-    var shopBusy by mutableStateOf(false)
-        private set
-    var shopError by mutableStateOf<String?>(null)
-    fun searchShop(query: String, maxEur: Int?, usedOk: Boolean) {
-        if (shopBusy || query.isBlank()) return
-        if (!prefs.hasKey) { message = "Add your Anthropic API key in Settings first."; return }
-        shopBusy = true; shopError = null
-        viewModelScope.launch {
-            try {
-                shopResult = withContext(Dispatchers.IO) { repo.searchShop(query.trim(), maxEur, usedOk) }
-            } catch (e: Exception) {
-                shopError = e.message
-            } finally {
-                shopBusy = false
             }
         }
     }
