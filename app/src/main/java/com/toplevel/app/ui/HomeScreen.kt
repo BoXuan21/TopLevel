@@ -143,7 +143,7 @@ fun HomeScreen(vm: AppViewModel, openFood: () -> Unit, openCheckIn: () -> Unit, 
         item { ExtrasPanel(vm, openMore) }
 
         item { AdvicePanel(moves.take(1), ai = vm.prefs.hasKey && vm.advice.isNotEmpty(), busy = vm.adviceBusy,
-            canRefresh = vm.prefs.hasKey) { vm.refreshAdvice() } }
+            canRefresh = vm.prefs.hasKey) { vm.refreshAdvice(manual = true) } }
 
         // Evening report: only once the evening starts (or after you've filed it)
         if (checkIn != null || hour >= vm.prefs.eveningHour - 2) item {

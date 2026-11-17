@@ -392,7 +392,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private set
     /** Auto-refresh at most once a day (saves tokens); the ↻ button refreshes on demand. */
     val adviceStale get() = advice.isEmpty() || !sameDay(adviceTs)
-    fun refreshAdvice() {
+    /** [manual] = the user tapped ↻; automatic refreshes fail quietly (no snackbar over the screen). */
+    fun refreshAdvice(manual: Boolean = false) {
         if (adviceBusy || !prefs.hasKey) return
         adviceBusy = true
         viewModelScope.launch {
@@ -402,7 +403,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     advice = a; adviceTs = System.currentTimeMillis()
                     prefs.adviceJson = AdviceCodec.encode(a); prefs.adviceTs = adviceTs
                 }
-            } catch (e: Exception) { message = e.message }
+            } catch (e: Exception) { if (manual) message = e.message }
             adviceBusy = false
         }
     }

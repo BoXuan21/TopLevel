@@ -217,8 +217,7 @@ class AppFlowTest {
     private fun more(entry: String) {
         tab("Home")
         compose.onNodeWithText("MENU").performClick(); settle()
-        scrollTo(entry)
-        compose.onNodeWithText(entry).performClick(); settle()
+        tapText(entry); settle()
     }
 
     /** Taps through any "[SYSTEM]" pop-up windows (first tap finishes typing, second closes). */
@@ -235,9 +234,20 @@ class AppFlowTest {
         settle(600)
     }
 
+    /** Scrolls whichever list holds [text] (on a phone the first scrollable can be a chip row or the coach pane). */
     private fun scrollTo(text: String) {
-        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText(text))
-        settle(500)
+        val lists = compose.onAllNodes(hasScrollAction())
+        val n = lists.fetchSemanticsNodes().size
+        for (i in 0 until n) {
+            try { lists[i].performScrollToNode(hasText(text)); settle(500); return } catch (_: AssertionError) { }
+        }
+        throw AssertionError("\"$text\" not found in any scrollable list")
+    }
+
+    /** Scroll into view, then tap (small screens: the button may be just below the fold). */
+    private fun tapText(text: String) {
+        scrollTo(text)
+        compose.onAllNodesWithText(text).onFirst().performScrollTo().performClick()
     }
 
     private fun waitFor(what: String, cond: suspend () -> Boolean) {
@@ -263,8 +273,11 @@ class AppFlowTest {
         // Completing a quest awards EXP + Gold and shows the quest pop-up
         val xpBefore = runBlocking { totalXp() }
         val goldBefore = runBlocking { repo.db.vault().goldBalanceNow() }
-        scrollTo("Hit 160 g protein")
-        compose.onNodeWithText("Hit 160 g protein").performClick()
+        dismissPopups()
+        tapText("Hit 160 g protein")
+        // On slow CI emulators the first tap can land while the list is still settling: tap again only if it didn't count
+        try { compose.waitUntil(4_000) { runBlocking { totalXp() > xpBefore } } }
+        catch (_: Throwable) { dismissPopups(); tapText("Hit 160 g protein") }
         waitFor("quest EXP") { totalXp() > xpBefore }
         waitFor("quest Gold") { repo.db.vault().goldBalanceNow() > goldBefore }
         settle(1200); shot("popup_quest_complete")
@@ -272,7 +285,7 @@ class AppFlowTest {
 
         // FOOD
         tab("Food"); shot("food")
-        compose.onNodeWithText("+1 GLASS").performClick(); settle()
+        tapText("+1 GLASS"); settle()
         assertEquals(5, repo.prefs.water(day))
         scroll(2); shot("food_water_advice")
 
@@ -281,23 +294,20 @@ class AppFlowTest {
         shot("train")
         // Log a new PR hold on the current planche stage
         shot("train_week_plan")
-        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("LOG HOLD")); settle()
-        compose.onAllNodesWithText("LOG HOLD").onFirst().performScrollTo().performClick(); settle()
+        tapText("LOG HOLD"); settle()
         compose.onAllNodes(hasSetTextAction() and hasAnyAncestor(isDialog())).onFirst().performTextInput("11")
         shot("train_log_hold_dialog")
         compose.onNode(hasText("Log") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
         waitFor("planche PR 11s") { (repo.db.vault().progressOf("planche")?.bestHoldSec ?: 0) >= 11 }
         settle(); dismissPopups(); shot("train_after_pr")
         // Any sport: log a 45 min run
-        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("LOG A SESSION")); settle()
-        compose.onNodeWithText("🏃 Running").performClick(); settle()
-        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("LOG 45 MIN RUNNING")); settle()
-        compose.onNodeWithText("LOG 45 MIN RUNNING").performClick()
+        scrollTo("LOG A SESSION")
+        tapText("🏃 Running"); settle()
+        tapText("LOG 45 MIN RUNNING")
         waitFor("run logged") { repo.life.logsSince(day).any { it.text.startsWith("Running · 45 min") } }
         assertTrue(repo.prefs.sportMin(day) >= 45)
         settle(); dismissPopups(); shot("train_session_logged")
-        scrollTo("▼ Stats & coach session")
-        compose.onNodeWithText("▼ Stats & coach session").performClick(); settle()
+        tapText("▼ Stats & coach session"); settle()
         scroll(2); shot("train_volume")
         scroll(2); shot("train_progress_chart")
 
@@ -316,7 +326,7 @@ class AppFlowTest {
         tab("Home"); compose.onNodeWithText("MENU").performClick(); settle()
         assertTrue(compose.onAllNodesWithText("Dungeons").fetchSemanticsNodes().isEmpty())
         more("More features"); shot("extras")
-        compose.onNodeWithText("Dungeons").performClick(); settle()
+        tapText("Dungeons"); settle()
         assertTrue(repo.prefs.extra("dungeons"))
         tab("Home"); compose.onNodeWithText("MENU").performClick(); settle()
         scrollTo("Dungeons"); compose.onNodeWithText("Dungeons").assertExists()
@@ -324,7 +334,7 @@ class AppFlowTest {
 
         // VAULT: deposit +€10 → pot 350
         more("Vault"); shot("vault")
-        compose.onNodeWithText("+€10").performClick()
+        tapText("+€10")
         waitFor("pot €350") { repo.db.vault().potNow() >= 349.9f }
         settle(); dismissPopups(); scroll(); shot("vault_rewards")
 
@@ -338,7 +348,7 @@ class AppFlowTest {
         // CHECK-IN dialog
         tab("Home")
         scrollTo("START CHECK-IN")
-        compose.onAllNodesWithText("START CHECK-IN").onFirst().performClick(); settle()
+        tapText("START CHECK-IN"); settle()
         shot("checkin")
         compose.onNodeWithText("Cancel").performScrollTo().performClick(); settle()
 
@@ -374,8 +384,8 @@ class AppFlowTest {
         assertTrue(runBlocking { repo.life.plansNow() }.any { it.type == PlanType.WORK && "SRE" in it.content })
         assertTrue(runBlocking { repo.life.plansNow() }.any { it.type == PlanType.LEARNING && "CKA" in it.content })
         // Sport: running + calisthenics, advanced, has parallettes
-        compose.onNodeWithText("◇ 🏃 Running").performClick()
-        compose.onNodeWithText("◇ 🤸 Calisthenics").performClick(); settle()
+        compose.onNodeWithText("◇ 🏃 Running").performScrollTo().performClick()
+        compose.onNodeWithText("◇ 🤸 Calisthenics").performScrollTo().performClick(); settle()
         compose.onNodeWithText("◇ Advanced · 3+ years, working on hard skills").performScrollTo().performClick()
         compose.onNodeWithText("◇ Parallettes").performScrollTo().performClick(); settle()
         shot("wizard_level")
@@ -407,10 +417,9 @@ class AppFlowTest {
         dismissPopups()
         more("Vault")
         // Rings: enough gold (1240 ≥ 150), pot 340 ≥ 45, cool-down passed → claimable
-        scrollTo("CLAIM REWARD ✦")
-        // The fake test key makes background AI calls fail; wait until that snackbar stops covering the button
+        // In case a snackbar is showing, wait until it stops covering the button
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Claude API", substring = true).fetchSemanticsNodes().isEmpty() }
-        compose.onAllNodesWithText("CLAIM REWARD ✦").onFirst().performClick()
+        tapText("CLAIM REWARD ✦")
         waitFor("rings redeemed") { repo.db.vault().rewardsNow().any { it.name.startsWith("Wooden") && it.redeemedAt != null } }
         settle(); shot("vault_reward_claimed")
         runBlocking {
