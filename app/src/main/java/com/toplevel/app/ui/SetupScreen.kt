@@ -335,7 +335,7 @@ private fun UpdatePanel(vm: AppViewModel) {
         Switch(checked = vm.autoUpdate, onCheckedChange = { vm.updateAutoUpdate(it) },
             colors = SwitchDefaults.colors(checkedTrackColor = C.accent))
     }) {
-        Text("Version ${vm.versionName} · " + if (vm.autoUpdate) "new builds install automatically (on Wi-Fi)" else "automatic updates off",
+        Text("Version ${vm.versionName} · " + if (vm.autoUpdate) "new builds install automatically" else "automatic updates off",
             color = C.muted, fontSize = 13.sp)
         vm.updateStatus?.let { Text(it, color = C.accentSoft, fontSize = 14.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(top = 4.dp)) }

@@ -35,8 +35,14 @@ android {
             signingConfig = signingConfigs.getByName("personal")
         }
         getByName("release") {
-            isMinifyEnabled = false
+            // Strip unused library code and resources: the APK was ~55 MB, which made self-updates slow
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("personal")
+            // Phones only (the barcode scanner ships big native libs per CPU type).
+            // -PallAbis keeps the x86 ones, to try a release build on the emulator.
+            if (!project.hasProperty("allAbis")) ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         }
     }
 

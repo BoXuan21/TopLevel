@@ -139,9 +139,10 @@ object Updater {
     fun schedule(ctx: Context, on: Boolean) {
         val wm = WorkManager.getInstance(ctx)
         if (!on) { wm.cancelUniqueWork("update"); return }
-        wm.enqueueUniquePeriodicWork("update", ExistingPeriodicWorkPolicy.KEEP,
-            PeriodicWorkRequestBuilder<UpdateWorker>(6, TimeUnit.HOURS)
-                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build())
+        // UPDATE (not KEEP) so phones that scheduled the old 6-hour Wi-Fi-only check switch to this one
+        wm.enqueueUniquePeriodicWork("update", ExistingPeriodicWorkPolicy.UPDATE,
+            PeriodicWorkRequestBuilder<UpdateWorker>(1, TimeUnit.HOURS)
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .build())
     }
 
@@ -157,7 +158,7 @@ object Updater {
     }
 }
 
-/** Every 6 h on Wi-Fi: install a newer build if there is one. */
+/** Hourly: install a newer build if there is one. */
 class UpdateWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
         if (!Repo.get(applicationContext).prefs.autoUpdate) return Result.success()

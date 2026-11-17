@@ -196,11 +196,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         water = prefs.water(day)
         growthOnStart()
         focusEnd = prefs.focusEnd
-        // While the app is open, Android can show the install prompt right away: check at most every 6 h
+        // While the app is open, Android can show the install prompt right away: check on every open (max every 15 min)
         val pm = getApplication<android.app.Application>().packageManager
         val permissionJustGiven = prefs.updateWaitsForPermission && pm.canRequestPackageInstalls()
         if (permissionJustGiven) prefs.updateWaitsForPermission = false
-        if (prefs.autoUpdate && (permissionJustGiven || System.currentTimeMillis() - prefs.lastUpdateCheck > 6 * 3_600_000L))
+        if (prefs.autoUpdate && (permissionJustGiven || System.currentTimeMillis() - prefs.lastUpdateCheck > 15 * 60_000L))
             checkUpdate(quiet = true)
         viewModelScope.launch(Dispatchers.IO) {
             healthConnected = HealthSync.granted(getApplication())
