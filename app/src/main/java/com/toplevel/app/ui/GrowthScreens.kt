@@ -599,9 +599,10 @@ fun ExtrasPanel(vm: AppViewModel, open: (String) -> Unit) {
     val due by vm.dueCards.collectAsState(initial = emptyList())
     val level = currentLevel(vm)
     @Suppress("UNUSED_VARIABLE") val v = vm.pointsVersion
-    val free = vm.unspentPoints(level)
-    val a = vm.dungeon
-    val job = vm.job
+    // Only extras the user switched on show up here
+    val free = if (vm.extra("points")) vm.unspentPoints(level) else 0
+    val a = vm.dungeon?.takeIf { vm.extra("dungeons") }
+    val job = vm.job?.takeIf { vm.extra("job") }
     if (a == null && due.isEmpty() && free <= 0 && job == null) return
     Panel(title = "System", color = C.shadow) {
         if (a != null) {

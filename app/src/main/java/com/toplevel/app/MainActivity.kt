@@ -209,7 +209,8 @@ private fun Root(vm: AppViewModel, openTarget: String?, consumeTarget: () -> Uni
         val level = Leveling.levelFor(Leveling.totals(t).values.sum())
         if (level > vm.prefs.lastSeenLevel && vm.wizardDone) {
             SystemEvents.show(Popup(Popup.Kind.LEVEL_UP, "NOTIFICATION", "LV ${level - 1}  →  LV $level",
-                lines = listOf("+${com.toplevel.app.data.Growth.POINTS_PER_LEVEL} stat points to spend", "Rank ${Leveling.rank(level)} · ${Leveling.title(level)}"),
+                lines = listOfNotNull("+${com.toplevel.app.data.Growth.POINTS_PER_LEVEL} stat points to spend".takeIf { vm.prefs.extra("points") },
+                    "Rank ${Leveling.rank(level)} · ${Leveling.title(level)}"),
                 reward = "Keep going, Player."))
         }
         if (level != vm.prefs.lastSeenLevel) vm.prefs.lastSeenLevel = level

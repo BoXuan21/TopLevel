@@ -80,12 +80,13 @@ class Repo private constructor(internal val ctx: Context) {
             award(nq.stat, xp, "quest:${nq.id}")
             gainGold(gold, "quest:${nq.id}")
             val all = game.questsForNow(q.date)
+            val goldText = if (prefs.extra(Prefs.Extras.VAULT)) " · +$gold Gold" else ""
             if (all.isNotEmpty() && all.all { it.done }) {
                 SystemEvents.show(Popup(Popup.Kind.CLEAR, "DAILY QUESTS CLEARED",
-                    "Every quest for today is complete.", reward = "+${Rewards.ALL_QUESTS_BONUS} DIS bonus · +$xp ${nq.stat.short} · +$gold Gold"))
+                    "Every quest for today is complete.", reward = "+${Rewards.ALL_QUESTS_BONUS} DIS bonus · +$xp ${nq.stat.short}$goldText"))
             } else {
                 SystemEvents.show(Popup(Popup.Kind.QUEST, "QUEST COMPLETE", nq.title,
-                    reward = "+$xp ${nq.stat.short} EXP · +$gold Gold"))
+                    reward = "+$xp ${nq.stat.short} EXP$goldText"))
             }
         } else {
             revoke("quest:${nq.id}")
@@ -233,7 +234,9 @@ Rules:
 - Match their training level and equipment (## Training profile). On training days make the strength quest follow THEIR plan
   for the day (it may come from an imported spreadsheet) with concrete targets at their current skill stages
   (e.g. "Planche: 6×5s at current stage + 4×3 PPU"). Advanced/elite: don't over-coach basics. Beginners: simple, safe, achievable.
-- If they are saving towards rewards, include at most one money quest (no-spend day, move €X to savings, cook instead of ordering) — ideally on 2-3 days per week.
+${if (prefs.extra(Prefs.Extras.VAULT) || prefs.extra(Prefs.Extras.MONEY))
+    "- If they are saving or tracking spending (## Money), include at most one money quest (no-spend day, move €X to savings, cook instead of ordering) — ideally on 2-3 days per week."
+  else "- No money or saving quests (they don't use that part of the app)."}
 - xp between 10 and 60 depending on effort.
 - Health data syncs automatically. When a quest is measurable, set "auto" so it completes itself:
   "steps" (target = step count), "sleep" (target = minutes of sleep last night), "workout" (target = workout minutes),
@@ -521,9 +524,18 @@ Return {"videos":[{"title":"...","channel":"...","why":"one short line","query":
         ))
     }
 
-    /** The calendar is read-only (appointments) unless the user allowed the coach to add events. */
-    private fun chatTools(): JsonArray = if (prefs.calendarWrite) allChatTools
-        else JsonArray(allChatTools.filter { str(it as? JsonObject, "name") != "add_calendar_event" })
+    /**
+     * The calendar is read-only (appointments) unless the user allowed the coach to add events.
+     * Reward / savings / spending tools only when those extras are on.
+     */
+    private fun chatTools(): JsonArray {
+        val off = buildSet {
+            if (!prefs.calendarWrite) add("add_calendar_event")
+            if (!prefs.extra(Prefs.Extras.VAULT)) { add("add_reward"); add("log_savings") }
+            if (!prefs.extra(Prefs.Extras.MONEY)) add("log_expense")
+        }
+        return JsonArray(allChatTools.filter { str(it as? JsonObject, "name") !in off })
+    }
 
     private suspend fun runTool(name: String, input: JsonObject): String = try {
         when (name) {
@@ -807,7 +819,7 @@ ${buildContext()}"""
         }
 
         val v = db.vault()
-        val ladders = trackedLadders()
+        val ladders = if (Sports.usesLadders(prefs.sportList)) trackedLadders() else emptyList()
         if (ladders.isNotEmpty()) {
             sb.append("\n## Calisthenics skill ladders\n")
             ladders.forEach { l ->
@@ -816,21 +828,25 @@ ${buildContext()}"""
                 sb.append("- ${l.name}: at ${l.stages[st]} (best ${if (l.hold) "${p.bestHoldSec}s" else "${p.bestReps} reps"}), next ${l.stages.getOrNull(st + 1) ?: "mastered"}\n")
             }
         }
-        sb.append("\n## Money\nGold: ${v.goldBalanceNow()}. Savings pot: €${"%.0f".format(v.potNow())}. " +
+        // Money only when the user turned on the Vault or Spending extras
+        val vault = prefs.extra(Prefs.Extras.VAULT)
+        val money = prefs.extra(Prefs.Extras.MONEY)
+        if (vault) sb.append("\n## Money\nGold: ${v.goldBalanceNow()}. Savings pot: €${"%.0f".format(v.potNow())}. " +
             "Saved this month: €${"%.0f".format(v.depositedSinceNow(monthStart()))} of €${prefs.savingsGoal} goal.\n")
-        db.grow().expensesSinceNow(monthStart()).takeIf { it.isNotEmpty() }?.let { ex ->
+        else if (money) sb.append("\n## Money\n")
+        if (money) db.grow().expensesSinceNow(monthStart()).takeIf { it.isNotEmpty() }?.let { ex ->
             sb.append("Spent this month: €${"%.0f".format(ex.sumOf { it.amountEur.toDouble() })} (" +
                 ex.groupBy { it.category }.entries.joinToString { "${it.key} €${"%.0f".format(it.value.sumOf { e -> e.amountEur.toDouble() })}" } +
                 (if (prefs.monthBudget > 0) "; budget €${prefs.monthBudget}" else "") + ")\n")
         }
-        val rewards = v.rewardsNow().filter { it.redeemedAt == null }
+        val rewards = if (vault) v.rewardsNow().filter { it.redeemedAt == null } else emptyList()
         if (rewards.isNotEmpty()) {
             sb.append("Rewards being earned: ")
             sb.append(rewards.joinToString("; ") { "${it.name} (€${"%.0f".format(it.priceEur)}, ${it.goldCost} Gold${if (it.condition.isNotBlank()) ", " + conditionLabel(it.condition) else ""})" })
             sb.append("\n")
         }
 
-        fit.bossNow(weekStart())?.let {
+        if (prefs.extra(Prefs.Extras.BOSS)) fit.bossNow(weekStart())?.let {
             sb.append("\n## This week's boss\n${it.name}: ${it.goal} (${if (it.defeated) "defeated" else "active"})\n")
         }
 

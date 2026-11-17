@@ -62,7 +62,7 @@ fun StatusScreen(vm: AppViewModel) {
         verticalArrangement = Gap,
     ) {
         item { PlayerCard(vm) { achOpen = true } }
-        item { StatPointsPanel(vm) }
+        if (vm.extra("points")) item { StatPointsPanel(vm) }
         // Stats
         item {
             Panel(title = "Stats") {
@@ -99,10 +99,10 @@ fun StatusScreen(vm: AppViewModel) {
         }
 
         // Focus
-        item { FocusPanel(vm) }
+        if (vm.extra("focus")) item { FocusPanel(vm) }
 
         // Weekly boss
-        item {
+        if (vm.extra("boss")) item {
             val b = boss
             Panel(
                 title = "Weekly boss",

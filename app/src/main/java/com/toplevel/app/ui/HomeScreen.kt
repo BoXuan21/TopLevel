@@ -236,7 +236,7 @@ fun PlayerCard(vm: AppViewModel, onClick: () -> Unit) {
         Row {
             Text("EXP ${p.intoLevel} / ${p.levelSpan}", color = C.muted, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f))
-            Text("◈ $gold G", color = C.warn, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            if (vm.extra("vault")) Text("◈ $gold G", color = C.warn, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
         if (vm.streak > 0) {
             Spacer(Modifier.height(6.dp))

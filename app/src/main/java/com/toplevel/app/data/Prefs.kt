@@ -104,6 +104,7 @@ class Prefs(ctx: Context) {
         "job_json" to jobJson, "jobs_done" to jobsDone, "theme" to theme, "dungeons_cleared" to dungeonsCleared.toString(),
         "budgets" to budgets, "month_budget" to monthBudget.toString(),
         "sports" to sports, "sport_notes" to sportNotes, "quest_wishes" to questWishes, "week_plan" to weekPlanJson,
+        "extras" to extrasOn.joinToString(","),
     ) + Stat.entries.associate { "pts_${it.name}" to points(it).toString() }
 
     fun importMap(m: Map<String, String>) {
@@ -139,7 +140,24 @@ class Prefs(ctx: Context) {
         m["sport_notes"]?.let { sportNotes = it }
         m["quest_wishes"]?.let { questWishes = it }
         m["week_plan"]?.let { weekPlanJson = it }
+        m["extras"]?.let { extrasOn = it.split(",").filter { s -> s.isNotBlank() }.toSet() }
         Stat.entries.forEach { s -> m["pts_${s.name}"]?.toIntOrNull()?.let { setPoints(s, it) } }
+    }
+
+    /** Extra game systems. All off until the user turns them on; their data is kept either way. */
+    object Extras {
+        data class E(val id: String, val icon: String, val name: String, val desc: String)
+        const val BOSS = "boss"; const val DUNGEONS = "dungeons"; const val JOB = "job"; const val POINTS = "points"
+        const val VAULT = "vault"; const val MONEY = "money"; const val FOCUS = "focus"
+        val all = listOf(
+            E(BOSS, "☠", "Weekly boss", "A big goal every Monday, plus a report on last week"),
+            E(DUNGEONS, "⛩", "Dungeons", "Timed challenges; quitting early gives a penalty quest"),
+            E(JOB, "♛", "Job change", "Multi-week questlines that unlock titles and colour themes"),
+            E(POINTS, "▲", "Stat points", "Spend points from level-ups to boost a stat's EXP"),
+            E(VAULT, "◈", "Vault & Gold", "Earn Gold, save money, unlock real-life rewards"),
+            E(MONEY, "€", "Spending", "Log spending, monthly budgets, no-spend streak"),
+            E(FOCUS, "◷", "Focus timer", "25/50/90-minute deep-work blocks"),
+        )
     }
 
     object Levels {
@@ -214,6 +232,15 @@ class Prefs(ctx: Context) {
     var sportNotes: String
         get() = sp.getString("sport_notes", "") ?: ""
         set(v) = sp.edit().putString("sport_notes", v.trim()).apply()
+
+    /** Optional features the user switched on (see [Extras]). Off by default to keep the app simple. */
+    fun extra(id: String): Boolean = id in extrasOn
+    fun setExtra(id: String, on: Boolean) {
+        extrasOn = if (on) extrasOn + id else extrasOn - id
+    }
+    var extrasOn: Set<String>
+        get() = (sp.getString("extras", "") ?: "").split(",").filter { it.isNotBlank() }.toSet()
+        set(v) = sp.edit().putString("extras", v.joinToString(",")).apply()
 
     /** The weekly sport plan (WeekPlan as JSON). */
     var weekPlanJson: String

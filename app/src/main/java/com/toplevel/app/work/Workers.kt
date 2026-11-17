@@ -72,7 +72,7 @@ class MorningWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
             repo.generateQuests()
         }
         repo.generateDiscover()
-        repo.generateBoss()
+        if (repo.prefs.extra("boss")) repo.generateBoss()
         HealthSync.sync(repo)
         val quests = repo.game.questsForNow(day)
         Notifier.show(applicationContext, 1, "⚔ Daily quests are ready",

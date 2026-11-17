@@ -35,7 +35,7 @@ private data class Entry(val id: String, val icon: String, val title: String, va
 /** The menu, in a few small groups so it's easy to find things. */
 private val groups = listOf(
     "YOU" to listOf(
-        Entry("status", "◆", "Status", "Stats, stat points, title", C.accent),
+        Entry("status", "◆", "Status", "Level, stats, title", C.accent),
         Entry("body", "◍", "Body", "Weight and trend", C.stat(Stat.VITALITY)),
         Entry("review", "▦", "Weekly review", "Your week + top 3 changes", C.stat(Stat.INTELLECT)),
     ),
@@ -44,6 +44,7 @@ private val groups = listOf(
         Entry("discover", "▶", "Discover", "Daily videos, tools and songs", C.stat(Stat.INTELLECT)),
         Entry("mycards", "✎", "Own flashcards", "Write cards yourself, cards from your journal", C.stat(Stat.INTELLECT)),
     ),
+    // Extras: only listed when switched on (Settings → More features)
     "CHALLENGES" to listOf(
         Entry("job", "♛", "Job change", "Questlines for a new class", C.shadow),
         Entry("dungeons", "⛩", "Dungeons", "Timed challenges", C.bad),
@@ -53,11 +54,15 @@ private val groups = listOf(
         Entry("vault", "◈", "Vault", "Gold, savings, rewards", C.warn),
     ),
     "APP" to listOf(
+        Entry("extras", "✚", "More features", "Turn on extras: boss, dungeons, Gold, budgets…", C.accent),
         Entry("settings", "⚙", "Settings", "API key, goals, plans, health, sound", C.muted),
     ),
 )
 
-private val titles = groups.flatMap { it.second }.associate { it.id to it.title } + ("menu" to "Menu")
+/** Menu entries that belong to an extra. */
+private val extraOf = mapOf("job" to "job", "dungeons" to "dungeons", "money" to "money", "vault" to "vault")
+
+private val titles = groups.flatMap { it.second }.associate { it.id to it.title } + ("menu" to "Menu") + ("extras" to "More features")
 
 @Composable
 fun MoreScreen(vm: AppViewModel, actions: Actions, page: String, open: (String) -> Unit, back: () -> Unit) {
@@ -82,6 +87,7 @@ fun MoreScreen(vm: AppViewModel, actions: Actions, page: String, open: (String) 
                 "skills" -> SkillsPage(vm)
                 "discover" -> DiscoverPage(vm)
                 "mycards" -> CardsPage(vm)
+                "extras" -> ExtrasPage(vm)
                 else -> SetupScreen(vm, actions.requestPerms, actions.connectHealth, actions.backup, actions.restore)
             }
         }
@@ -91,7 +97,9 @@ fun MoreScreen(vm: AppViewModel, actions: Actions, page: String, open: (String) 
 @Composable
 private fun Menu(vm: AppViewModel, open: (String) -> Unit) {
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Gap) {
-        groups.forEach { (label, list) ->
+        groups.forEach { (label, all) ->
+            val list = all.filter { e -> extraOf[e.id]?.let { vm.extra(it) } ?: true }
+            if (list.isEmpty()) return@forEach
             item {
                 Text(label, color = C.muted, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp,
                     modifier = Modifier.padding(top = 6.dp))
@@ -101,6 +109,36 @@ private fun Menu(vm: AppViewModel, open: (String) -> Unit) {
         item {
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 GhostButton("Run setup again", Modifier.weight(1f), color = C.muted) { vm.restartWizard() }
+            }
+        }
+        item { Spacer(Modifier.size(24.dp)) }
+    }
+}
+
+/** Switch the extra game systems on or off. Nothing is deleted when one is off. */
+@Composable
+private fun ExtrasPage(vm: AppViewModel) {
+    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Gap) {
+        item {
+            Text("TopLevel stays simple by default: quests, food, training, learning and your coach. " +
+                "Turn on extras if you want more game. Your data is kept when you turn one off.", color = C.muted, fontSize = 14.sp)
+        }
+        com.toplevel.app.data.Prefs.Extras.all.forEach { x ->
+            item {
+                val on = vm.extra(x.id)
+                Row(
+                    Modifier.fillMaxWidth().clip(SmallShape).background(C.panel.copy(alpha = 0.9f))
+                        .tap { vm.setExtra(x.id, !on) }.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(x.icon, color = if (on) C.accent else C.muted, fontSize = 20.sp, modifier = Modifier.width(34.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(x.name, color = C.text, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Text(x.desc, color = C.muted, fontSize = 13.sp)
+                    }
+                    androidx.compose.material3.Switch(checked = on, onCheckedChange = { vm.setExtra(x.id, it) },
+                        colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = C.accent))
+                }
             }
         }
         item { Spacer(Modifier.size(24.dp)) }

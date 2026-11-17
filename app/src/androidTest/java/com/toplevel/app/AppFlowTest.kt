@@ -93,6 +93,8 @@ class AppFlowTest {
         p.kcalGoal = 2600; p.proteinGoal = 160; p.carbsGoal = 300; p.fatGoal = 80
         p.trackedLadders = "planche,frontlever"
         p.sports = "Calisthenics,Running"
+        // This player uses some extras (they're off by default)
+        p.extrasOn = setOf("vault", "boss", "points")
         repo.saveWeekPlan(com.toplevel.app.data.WeekPlan(List(7) { i ->
             when (i % 3) {
                 0 -> listOf(com.toplevel.app.data.PlanSession("Calisthenics", "Planche + FL", 75, "Straddle holds 6×5s, FL raises 4×6"))
@@ -309,6 +311,16 @@ class AppFlowTest {
         more("Status"); shot("status")
         scroll(2); shot("status_boss_discovery")
         more("Body"); shot("body")
+
+        // EXTRAS: off by default; switching one on brings its page into the menu
+        tab("Home"); compose.onNodeWithText("MENU").performClick(); settle()
+        assertTrue(compose.onAllNodesWithText("Dungeons").fetchSemanticsNodes().isEmpty())
+        more("More features"); shot("extras")
+        compose.onNodeWithText("Dungeons").performClick(); settle()
+        assertTrue(repo.prefs.extra("dungeons"))
+        tab("Home"); compose.onNodeWithText("MENU").performClick(); settle()
+        scrollTo("Dungeons"); compose.onNodeWithText("Dungeons").assertExists()
+        repo.prefs.setExtra("dungeons", false)
 
         // VAULT: deposit +€10 → pot 350
         more("Vault"); shot("vault")

@@ -212,7 +212,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (qs.isNotEmpty()) SystemEvents.show(Popup(Popup.Kind.ARRIVED, "DAILY QUESTS ARRIVED",
                 "Your orders for today are in.", lines = qs.take(6).map { it.title },
                 reward = "Clear them all: +${com.toplevel.app.game.Rewards.ALL_QUESTS_BONUS} DIS bonus"))
-            val e2 = repo.generateBoss()
+            val e2 = if (prefs.extra("boss")) repo.generateBoss() else null
             val e3 = repo.generateDiscover()
             e1 ?: e2 ?: e3
         } else if (prefs.hasKey && prefs.lastDiscoverGen != day) run("Finding today's discoveries…") {
@@ -628,6 +628,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!com.toplevel.app.data.Sports.usesLadders(sports)) setLadders(emptyList())
         else if (trackedLadders.isBlank()) setLadders(listOf("planche", "frontlever"))
     }
+    // Extras (optional game systems), bumped to redraw after a toggle
+    var extrasVersion by mutableIntStateOf(0)
+        private set
+    fun extra(id: String): Boolean { @Suppress("UNUSED_VARIABLE") val v = extrasVersion; return prefs.extra(id) }
+    fun setExtra(id: String, on: Boolean) { prefs.setExtra(id, on); extrasVersion++ }
+
     // Weekly plan
     var weekPlan by mutableStateOf(repo.weekPlan())
         private set
