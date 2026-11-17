@@ -49,6 +49,7 @@ android {
         create("qa") {
             initWith(getByName("release"))
             isDebuggable = true // only so the device tests can attach; shrinking is the same as release
+            proguardFile("proguard-qa.pro")
             matchingFallbacks += listOf("release")
         }
     }
