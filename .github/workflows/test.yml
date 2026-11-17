@@ -28,6 +28,43 @@ jobs:
           name: unit-test-report
           path: app/build/reports/tests/
 
+  # The shrunk build (same R8 settings as the release APK): catches what only breaks after shrinking
+  shrunk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Build shrunk app + test APKs
+        run: |
+          chmod +x gradlew
+          ./gradlew -PtestQa -PallAbis assembleQa assembleQaAndroidTest --stacktrace
+      - name: Barcode test on the shrunk app
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb install -r app/build/outputs/apk/qa/app-qa.apk
+            adb install -r app/build/outputs/apk/androidTest/qa/app-qa-androidTest.apk
+            adb shell am instrument -w -r -e class com.toplevel.app.BarcodeTest com.toplevel.app.test/androidx.test.runner.AndroidJUnitRunner > shrunk.txt || true
+            grep -vE "^INSTRUMENTATION_STATUS: (stream|numtests|current|id|class)" shrunk.txt | tail -40
+            adb logcat -d -t 1500 | grep -iE "mlkit|barhopper|barcode|FATAL|AndroidRuntime" | tail -40 || true
+            grep -q "^OK (" shrunk.txt
+
   emulator:
     runs-on: ubuntu-latest
     timeout-minutes: 45

@@ -44,7 +44,14 @@ android {
             // -PallAbis keeps the x86 ones, to try a release build on the emulator.
             if (!project.hasProperty("allAbis")) ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         }
+        // Same shrinking as release, but testable: CI runs device tests against it (-PtestQa),
+        // so problems that only appear in the shrunk app (like the barcode scanner) are caught.
+        create("qa") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+        }
     }
+    testBuildType = if (project.hasProperty("testQa")) "qa" else "debug"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
