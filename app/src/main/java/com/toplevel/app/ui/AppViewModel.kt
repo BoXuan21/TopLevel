@@ -108,6 +108,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
+import com.toplevel.app.data.searchShop
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
@@ -225,6 +226,55 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             e1 ?: e2 ?: e3
         } else if (prefs.hasKey && prefs.lastDiscoverGen != day) run("Finding today's discoveries…") {
             repo.generateDiscover()
+        }
+    }
+
+    /** Pull-down on a screen: sync health + calendar, re-check the day, streak and advice. */
+    var refreshing by mutableStateOf(false)
+        private set
+    fun pullRefresh() {
+        if (refreshing) return
+        refreshing = true
+        today.value = repo.today()
+        refreshCalendar()
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    healthConnected = HealthSync.granted(getApplication())
+                    if (healthConnected) HealthSync.sync(repo)
+                    StepCounter.sync(repo)
+                    repo.checkAchievements()
+                    noSpend = repo.noSpendStreak()
+                    com.toplevel.app.widget.Widgets.refresh(getApplication())
+                }
+                refreshStreak()
+                water = prefs.water(day)
+                if (prefs.hasKey && adviceStale) refreshAdvice()
+            } catch (e: Exception) {
+                message = e.message
+            } finally {
+                refreshing = false
+            }
+        }
+    }
+
+    // Shop: cheapest offers found on the web
+    var shopResult by mutableStateOf<com.toplevel.app.data.ShopResult?>(null)
+    var shopBusy by mutableStateOf(false)
+        private set
+    var shopError by mutableStateOf<String?>(null)
+    fun searchShop(query: String, maxEur: Int?, usedOk: Boolean) {
+        if (shopBusy || query.isBlank()) return
+        if (!prefs.hasKey) { message = "Add your Anthropic API key in Settings first."; return }
+        shopBusy = true; shopError = null
+        viewModelScope.launch {
+            try {
+                shopResult = withContext(Dispatchers.IO) { repo.searchShop(query.trim(), maxEur, usedOk) }
+            } catch (e: Exception) {
+                shopError = e.message
+            } finally {
+                shopBusy = false
+            }
         }
     }
 

@@ -16,16 +16,16 @@ A level-up style life tracker for Android (built for the Galaxy Z Fold), with Cl
 | **Evening report** | Mood, energy, sleep, how the day went, what went well, what you'd change. Claude replies with a reflection and adds a quest for tomorrow |
 | **Nutrition** | Type "200g chicken + rice" and Claude estimates the macros. Progress bars track your kcal and macro goals, and hitting your protein goal earns VIT |
 | **Journal** | Work, learned, training and note logs, each feeding a stat (Learn tab) |
-| **Skills** | Things to learn: Locked → In training → Acquired. Claude can suggest your next skills (menu) |
-| **Coach** | Chat with Claude, who sees all your data. Paste a plan and it's saved. Say "I ate X" and it's logged. It can add quests, skills, memories and **Google Calendar events** |
+| **Skills** | Things to learn: Locked → In training → Acquired. Add one with **+**, or ✦ to let Claude suggest your next skills (menu) |
+| **Coach** | Chat with Claude, who sees all your data. Paste a plan and it's saved. Say "I ate X" and it's logged. It can add quests, skills, memories and **Google Calendar events**, and fix your stat points or a stat's EXP when something went wrong |
 | **Discovery** | 3 songs picked from your music taste (open in **YouTube Music**) and 2 educational videos for your SRE and learning goals (open in YouTube), refreshed daily |
 | **Health Connect** | Steps, sleep, workouts and weight from Samsung Health or your watch, synced hourly. Measurable quests (e.g. "8,000 steps") complete themselves |
 | **Any sport** | Setup asks what you do (gym, running, cycling, football, yoga… or your own). Train only shows what fits: log a session in two taps (sport, minutes, km). Logged sessions count for workout quests, and quests use your sports |
 | **Weekly plan** | Train → "Your week": the AI builds a Mon–Sun plan from your sports, or paste the plan you already have (coach message, table, notes) and it's converted. Tap a day to edit. Today's quest is today's session; "Done" logs it in one tap |
 | **Calisthenics tracking** (if you pick Calisthenics) | Built for advanced athletes. Planche, front lever, back lever, handstand, muscle-up and HSPU, each with 7–8 stages up to elite (full planche push-up, maltese, one-arm FL…). You can rename the stages to your own progressions. Tap a stage to set your level; **Advance ▲** marks a new stage and pays EXP + Gold. Log holds/reps with +kg and notes (parallettes, RPE…), and see per-stage PRs, weekly volume and time-under-tension charts |
 | **Coach-built sessions** (optional, off by default) | Switch on to have Claude program a session from your stages, volume and recovery |
-| **Vault: Gold & rewards** | Quests, sessions, stage-ups, bosses, achievements and saving earn **Gold**. Add real rewards (e.g. "New desk €250, unlock at straddle planche"). To claim one you need the Gold, the € in your savings pot, its condition met, and a 72h cool-down (anti-impulse) |
-| **Savings** | Monthly savings goal, quick +€5/10/20/50 deposits (earns DIS EXP + Gold), and "I almost bought something": skipped purchases go to your pot. The coach adds no-spend and saving quests |
+| **Money** (Spending + Vault in one page) | This month at a glance: spent vs. budget, saved vs. goal, Gold. One form with three modes: **Spent** (category, note), **Saved** (+€5/10/20/50 quick buttons, earns DIS EXP + Gold) and **Didn't buy** (the money goes to your pot). Real rewards (e.g. "New desk €250, unlock at straddle planche") need the Gold, the € in your pot, their condition and a 72h cool-down. Category limits and one combined history |
+| **Shop** | Type a product ("RTX 5070", "2TB NVMe", "good 1440p monitor") and Claude searches price comparison sites and shops on the web, then lists the offers cheapest first with shipping, stock and a link. Optional budget and "used OK"; vague queries get a concrete pick plus alternatives. "Save as reward" puts the best price into Money |
 | **Workout tracker** | Log sets (kg × reps), see an estimated-1RM chart per exercise and your PRs, and get Claude's target for your next session (progressive overload) |
 | **Streaks & penalties** | Clearing ≥80% of quests keeps your streak going, worth +5% EXP per day (max ×1.5). Missing over half spawns a penalty quest, and ignoring that costs 50 EXP |
 | **Weekly boss** | Every Monday: a report on last week, plus a big goal for this week. Defeating it pays +150–300 EXP |
@@ -34,7 +34,8 @@ A level-up style life tracker for Android (built for the Galaxy Z Fold), with Cl
 | **Voice input** | 🎙 on the check-in, journal, food and coach fields |
 | **Fold layout** | Unfolded, the Coach stays open on the right next to any screen |
 | **Achievements & titles** | 23 achievements (incl. planche/front-lever milestones and savings); equip the titles they unlock on your status card (tap the player card) |
-| **Extras (off by default)** | To keep the app simple, the weekly boss, dungeons, job change, stat points, Vault & Gold, spending and the focus timer are switched off. Turn any of them on in Menu → More features; nothing is deleted when one is off |
+| **Extras (off by default)** | To keep the app simple, the weekly boss, dungeons, job change, stat points, Money & Gold and the focus timer are switched off. Turn any of them on in Menu → More features; nothing is deleted when one is off |
+| **Pull to refresh** | Pull down on any screen to sync Samsung Health, the calendar, streak, widgets and the advice right away |
 | **Auto-update** | The app checks this repo's latest GitHub release (on start and every 6 h on Wi-Fi), downloads `TopLevel.apk` and installs it. The first time, Android asks you once to allow TopLevel to install apps and to confirm; after that updates go through on their own. Switch it off or "Check now" in Settings → Updates |
 | **Backup** | Export/restore everything as a file. Choose Google Drive in the picker for a cloud backup |
 | **Widgets** | **Daily Quests** (tap a quest to complete it from the home screen), **Quiz** (a due question: show the answer, then "knew it" / "again"), **Food** and **Status** (level, stats, progress) |

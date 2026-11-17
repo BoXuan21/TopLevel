@@ -12,7 +12,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -34,24 +39,20 @@ import com.toplevel.app.data.SkillItem
 @Composable
 fun SkillsPanels(vm: AppViewModel) {
     val skills by vm.skills.collectAsState(initial = emptyList())
-    var title by remember { mutableStateOf("") }
-    var area by remember { mutableStateOf("") }
+    var adding by remember { mutableStateOf(false) }
 
     Column(verticalArrangement = Gap) {
         val learned = skills.count { it.status == "learned" }
-        Panel(title = "Skill tree · $learned acquired") {
-            Field(title, { title = it }, "Skill or topic", placeholder = "e.g. eBPF, SLO design, Go concurrency")
-            Spacer(Modifier.height(6.dp))
-            Field(area, { area = it }, "Area (optional)", singleLine = true)
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GhostButton("Add", enabled = title.isNotBlank()) {
-                    vm.addSkill(title.trim(), area.trim()); title = ""; area = ""
-                }
-                if (vm.prefs.hasKey) GhostButton("Suggest next skills", enabled = vm.busy == null) { vm.suggestSkills() }
+        Panel(title = "Skill tree · $learned acquired", action = {
+            if (vm.prefs.hasKey) Text("✦", color = if (vm.busy == null) C.accent else C.muted, fontSize = 18.sp,
+                modifier = Modifier.semantics { contentDescription = "Suggest next skills" }
+                    .tap { if (vm.busy == null) vm.suggestSkills() }.padding(horizontal = 10.dp, vertical = 4.dp))
+            IconButton(onClick = { adding = true }, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Filled.Add, "Add skill", tint = C.accent)
             }
-            Spacer(Modifier.height(6.dp))
-            Text("Tap the ◇ to advance: TODO → LEARNING → ACQUIRED (+60 INT). Tap the name for notes.",
+        }) {
+            Text(if (skills.isEmpty()) "Tap + to add something you want to learn" + (if (vm.prefs.hasKey) ", or ✦ for suggestions." else ".")
+                else "Tap ◇ to advance: locked → in training → acquired (+60 INT).",
                 color = C.muted, fontSize = 12.sp)
         }
         listOf("learning" to "In training", "todo" to "Locked", "learned" to "Acquired").forEach { (st, label) ->
@@ -63,6 +64,7 @@ fun SkillsPanels(vm: AppViewModel) {
             }
         }
     }
+    if (adding) AddSkillDialog(vm) { adding = false }
 }
 
 @Composable
@@ -100,4 +102,27 @@ private fun SkillRow(vm: AppViewModel, s: SkillItem) {
             GhostButton("Save notes") { vm.saveSkillNotes(s, notes); open = false }
         }
     }
+}
+
+@Composable
+private fun AddSkillDialog(vm: AppViewModel, onClose: () -> Unit) {
+    var title by remember { mutableStateOf("") }
+    var area by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onClose,
+        containerColor = C.panel,
+        title = { Text("New skill", color = C.text) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Field(title, { title = it }, "Skill or topic", placeholder = "e.g. eBPF, SLO design, Go concurrency", singleLine = true)
+                Field(area, { area = it }, "Area (optional)", singleLine = true)
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = title.isNotBlank(), onClick = { vm.addSkill(title.trim(), area.trim()); onClose() }) {
+                Text("Add", color = C.accent)
+            }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } },
+    )
 }

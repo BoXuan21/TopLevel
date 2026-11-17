@@ -37,7 +37,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import com.toplevel.app.data.Achievements
+import com.toplevel.app.data.Expense
+import com.toplevel.app.data.Growth
+import com.toplevel.app.data.SavingsEntry
 import com.toplevel.app.data.Cali
 import com.toplevel.app.data.Reward
 import com.toplevel.app.data.RewardStatus
@@ -52,88 +59,174 @@ import java.time.format.DateTimeFormatter
 
 private val GOLD = androidx.compose.ui.graphics.Color(0xFFFFD166)
 
+private fun eur(v: Double) = "€" + if (v % 1.0 == 0.0) v.toInt().toString() else "%.2f".format(v)
+
+/** Old menu id, kept so links and tests that open "vault" still land on the money page. */
 @Composable
-fun VaultScreen(vm: AppViewModel) {
+fun VaultScreen(vm: AppViewModel) = MoneyScreen(vm)
+
+/**
+ * Spending, savings, Gold and rewards on one page (they used to be two pages).
+ * One entry form with three modes: spent / saved / didn't buy.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun MoneyScreen(vm: AppViewModel) {
     val gold by vm.gold.collectAsState(initial = 0)
     val pot by vm.pot.collectAsState(initial = 0f)
-    val month by vm.savedThisMonth.collectAsState(initial = 0f)
+    val savedMonth by vm.savedThisMonth.collectAsState(initial = 0f)
     val rewards by vm.rewards.collectAsState(initial = emptyList())
     val savings by vm.savings.collectAsState(initial = emptyList())
+    val spentList by vm.expensesMonth.collectAsState(initial = emptyList())
+    @Suppress("UNUSED_VARIABLE") val bv = vm.budgetsVersion
+    var mode by remember { mutableStateOf("spent") }
+    var amount by remember { mutableStateOf("") }
+    var cat by remember { mutableStateOf(Growth.categories.first()) }
+    var note by remember { mutableStateOf("") }
     var addOpen by remember { mutableStateOf(false) }
-    var skipOpen by remember { mutableStateOf(false) }
-    var custom by remember { mutableStateOf("") }
-    var goalEdit by remember { mutableStateOf(false) }
+    var edit by remember { mutableStateOf<String?>(null) } // "__total", "__savings" or a category
+    var limitsOpen by remember { mutableStateOf(false) }
+    val limits = vm.prefs.budgetMap()
+    val spent = spentList.sumOf { it.amountEur.toDouble() }
+    val budget = vm.prefs.monthBudget
+    val goal = vm.prefs.savingsGoal
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Gap) {
 
+        // Overview: spent, saved, Gold
         item {
-            Panel {
+            Panel(title = "This month", color = C.warn) {
                 Row {
-                    Column(Modifier.weight(1f)) {
-                        Text("GOLD", color = C.muted, fontSize = 10.sp, fontFamily = Fonts.tech)
-                        Text("◈ $gold", color = GOLD, fontSize = 30.sp, fontWeight = FontWeight.Black)
-                        Text("Earned from quests, training, saving", color = C.muted, fontSize = 11.sp)
+                    Column(Modifier.weight(1f).tap { edit = "__total" }) {
+                        Text("SPENT", color = C.muted, fontSize = 10.sp, fontFamily = Fonts.tech)
+                        Text(eur(spent), color = if (budget > 0 && spent > budget) C.bad else C.warn, fontSize = 26.sp, fontWeight = FontWeight.Black)
+                        Text(if (budget > 0) "of €$budget budget" else "Tap to set a budget", color = C.muted, fontSize = 11.sp)
+                    }
+                    Column(Modifier.weight(1f).tap { edit = "__savings" }, horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("SAVED", color = C.muted, fontSize = 10.sp, fontFamily = Fonts.tech)
+                        Text(eur(savedMonth.toDouble()), color = C.good, fontSize = 26.sp, fontWeight = FontWeight.Black)
+                        Text(if (goal > 0) "of €$goal goal" else "Tap to set a goal", color = C.muted, fontSize = 11.sp)
                     }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
-                        Text("SAVINGS POT", color = C.muted, fontSize = 10.sp, fontFamily = Fonts.tech)
-                        Text("€${"%.0f".format(pot)}", color = C.good, fontSize = 30.sp, fontWeight = FontWeight.Black)
-                        Text("Real money set aside", color = C.muted, fontSize = 11.sp)
-                    }
-                }
-            }
-        }
-
-        // Savings
-        item {
-            Panel(title = "Save money") {
-                val goal = vm.prefs.savingsGoal
-                Row {
-                    Text("This month", color = C.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    Text("€${"%.0f".format(month)} / €$goal", color = C.muted, fontSize = 12.sp, fontFamily = Fonts.tech,
-                        modifier = Modifier.tap { goalEdit = true })
-                }
-                Spacer(Modifier.height(4.dp))
-                Bar(if (goal > 0) month / goal else 0f, C.good, height = 8)
-                Spacer(Modifier.height(10.dp))
-                Text("Moved money to savings? Log it: +DIS EXP and +Gold (½ per €).", color = C.muted, fontSize = 12.sp)
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(5, 10, 20, 50).forEach { a -> GhostButton("+€$a") { vm.deposit(a.toFloat(), "") } }
-                }
-                Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Field(custom, { custom = it.filter { c -> c.isDigit() || c == '.' || c == ',' } }, "€ amount", Modifier.weight(1f), singleLine = true)
-                    GhostButton("Save", enabled = custom.isNotBlank()) {
-                        custom.replace(',', '.').toFloatOrNull()?.let { vm.deposit(it, "") }; custom = ""
+                        Text("GOLD", color = C.muted, fontSize = 10.sp, fontFamily = Fonts.tech)
+                        Text("◈ $gold", color = GOLD, fontSize = 26.sp, fontWeight = FontWeight.Black)
+                        Text("Pot €${"%.0f".format(pot)}", color = C.muted, fontSize = 11.sp)
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                GhostButton("🛑 I almost bought something…") { skipOpen = true }
-                Text("Didn't buy it? The money goes to your pot instead.", color = C.muted, fontSize = 11.sp,
-                    modifier = Modifier.padding(top = 4.dp))
+                if (budget > 0) Bar((spent / budget).toFloat(), if (spent > budget) C.bad else C.warn, height = 5)
+                if (goal > 0) { Spacer(Modifier.height(4.dp)); Bar(savedMonth / goal, C.good, height = 5) }
+                Spacer(Modifier.height(8.dp))
+                Text(if (vm.noSpend > 0) "🔥 ${vm.noSpend}-day no-spend streak (+5 Gold per clean day)"
+                    else "Days without spending and money you save earn Gold.", color = if (vm.noSpend > 0) C.warn else C.muted,
+                    fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        // One form for everything
+        item {
+            Panel(title = "Add") {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Segment("− Spent", mode == "spent") { mode = "spent" }
+                    Segment("+ Saved", mode == "saved") { mode = "saved" }
+                    Segment("Didn't buy", mode == "skipped") { mode = "skipped" }
+                }
+                Spacer(Modifier.height(10.dp))
+                if (mode == "saved") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(5, 10, 20, 50).forEach { a -> GhostButton("+€$a") { vm.deposit(a.toFloat(), "") } }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                Field(amount, { amount = it.filter { c -> c.isDigit() || c == '.' || c == ',' } }, "Amount €", singleLine = true,
+                    keyboard = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                if (mode == "spent") {
+                    Spacer(Modifier.height(8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Growth.categories.forEach { c -> Segment(c, cat == c) { cat = c } }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Field(note, { note = it }, if (mode == "skipped") "What didn't you buy?" else "Note (optional)", singleLine = true)
+                Spacer(Modifier.height(8.dp))
+                val a = amount.replace(',', '.').toFloatOrNull()
+                val ok = a != null && a > 0 && (mode != "skipped" || note.isNotBlank())
+                PrimaryButton(when (mode) { "spent" -> "Log spending"; "saved" -> "Save"; else -> "Into the pot" }, Modifier.fillMaxWidth(), enabled = ok) {
+                    when (mode) {
+                        "spent" -> vm.addExpense(a!!, cat, note.trim())
+                        "saved" -> vm.deposit(a!!, note.trim())
+                        else -> vm.skipped(note.trim(), a!!)
+                    }
+                    amount = ""; note = ""
+                }
+                Text(when (mode) {
+                    "spent" -> "Spending is just tracked: no penalty, but it ends the no-spend streak."
+                    "saved" -> "Moved money to savings: +DIS EXP and +½ Gold per €."
+                    else -> "Resisted an impulse buy? That money goes to your pot instead."
+                }, color = C.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
             }
         }
 
         // Rewards
         item {
-            Panel(
-                title = "Rewards",
-                action = {
-                    IconButton(onClick = { addOpen = true }, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Filled.Add, "Add reward", tint = C.accent)
-                    }
-                },
-            ) {
-                Text("Treat yourself — once you've earned it. Each reward needs Gold, the money in your pot, " +
-                    "its unlock condition, and a 72h cool-down after adding it (no impulse buys).",
-                    color = C.muted, fontSize = 12.sp)
-                val open = rewards.filter { it.redeemedAt == null }
-                if (open.isEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text("No rewards yet. Tap + to add one — e.g. \"New desk, €250, unlock at straddle planche\".",
-                        color = C.text, fontSize = 13.sp)
+            Panel(title = "Rewards", color = GOLD, action = {
+                IconButton(onClick = { addOpen = true }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Filled.Add, "Add reward", tint = C.accent)
                 }
+            }) {
+                val open = rewards.filter { it.redeemedAt == null }
+                Text(if (open.isEmpty()) "Tap + to add something you want, e.g. \"New desk, €250\". " +
+                    "It unlocks with Gold, the money in your pot and a 72h cool-down." else
+                    "Needs Gold, the money in your pot, its condition and a 72h cool-down (no impulse buys).",
+                    color = C.muted, fontSize = 12.sp)
                 open.forEach { r -> RewardRow(vm, r, gold, pot) }
+            }
+        }
+
+        // Limits per category (collapsed)
+        item {
+            Panel(title = "Categories", action = {
+                TextButton(onClick = { limitsOpen = !limitsOpen }) { Text(if (limitsOpen) "Done" else "Limits", color = C.accent) }
+            }) {
+                val shown = Growth.categories.filter { c -> limitsOpen || spentList.any { it.category == c } || limits[c] != null }
+                if (shown.isEmpty()) Text("Nothing spent this month.", color = C.muted, fontSize = 13.sp)
+                shown.forEach { c ->
+                    val sp = spentList.filter { it.category == c }.sumOf { it.amountEur.toDouble() }
+                    val lim = limits[c]
+                    Row(Modifier.fillMaxWidth().tap { edit = c }.padding(top = 6.dp)) {
+                        Text(c, color = C.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text(eur(sp) + (lim?.let { " / €$it" } ?: if (limitsOpen) "  + limit" else ""),
+                            color = if (lim != null && sp > lim) C.bad else C.muted, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(3.dp))
+                    Bar(if (lim != null && lim > 0) (sp / lim).toFloat() else if (spent > 0) (sp / spent).toFloat() else 0f,
+                        if (lim != null && sp > lim) C.bad else C.accent, height = 5)
+                }
+            }
+        }
+
+        // History: spending this month and savings, newest first
+        val history = spentList.map { e -> Triple(e.ts, -e.amountEur, e.category + if (e.note.isNotBlank()) " · ${e.note}" else "") to (e as Any) } +
+            savings.take(40).map { s -> Triple(s.ts, s.amountEur, s.note.ifBlank { "Saved" }) to (s as Any) }
+        if (history.isNotEmpty()) item {
+            Panel(title = "History") {
+                val fmt = DateTimeFormatter.ofPattern("dd.MM")
+                history.sortedByDescending { it.first.first }.take(50).forEach { (row, src) ->
+                    val (ts, amt, label) = row
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
+                        Text(Instant.ofEpochMilli(ts).atZone(ZoneId.systemDefault()).format(fmt), color = C.muted,
+                            fontSize = 12.sp, fontFamily = Fonts.tech, modifier = Modifier.width(46.dp))
+                        Text(label, color = C.text, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Text((if (amt >= 0) "+" else "−") + eur(kotlin.math.abs(amt).toDouble()),
+                            color = if (amt >= 0) C.good else C.warn, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        val deletable = src is Expense || (src is SavingsEntry && src.rewardId == null)
+                        if (deletable) IconButton(onClick = {
+                            if (src is Expense) vm.deleteExpense(src) else if (src is SavingsEntry) vm.deleteSavings(src)
+                        }, modifier = Modifier.size(30.dp)) {
+                            Icon(Icons.Filled.Delete, "Delete", tint = C.muted)
+                        } else Spacer(Modifier.width(30.dp))
+                    }
+                }
             }
         }
 
@@ -150,39 +243,24 @@ fun VaultScreen(vm: AppViewModel) {
                 }
             }
         }
-
-        if (savings.isNotEmpty()) item {
-            Panel(title = "Pot history") {
-                val fmt = DateTimeFormatter.ofPattern("dd.MM HH:mm")
-                savings.take(30).forEach { s ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(Instant.ofEpochMilli(s.ts).atZone(ZoneId.systemDefault()).format(fmt), color = C.muted,
-                            fontSize = 11.sp, fontFamily = Fonts.tech, modifier = Modifier.width(80.dp))
-                        Text(s.note.ifBlank { "Saved" }, color = C.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                        Text((if (s.amountEur >= 0) "+" else "") + "€${"%.2f".format(s.amountEur)}",
-                            color = if (s.amountEur >= 0) C.good else C.bad, fontSize = 13.sp, fontFamily = Fonts.tech)
-                        if (s.rewardId == null) IconButton(onClick = { vm.deleteSavings(s) }, modifier = Modifier.size(28.dp)) {
-                            Icon(Icons.Filled.Delete, "Delete", tint = C.muted)
-                        }
-                    }
-                }
-            }
-        }
         item { Spacer(Modifier.height(80.dp)) }
     }
 
     if (addOpen) AddRewardDialog(vm) { addOpen = false }
-    if (skipOpen) SkipDialog(vm) { skipOpen = false }
-    if (goalEdit) {
-        var g by remember { mutableStateOf(vm.prefs.savingsGoal.toString()) }
+    edit?.let { c ->
+        val current = when (c) { "__total" -> budget; "__savings" -> goal; else -> limits[c] ?: 0 }
+        var v by remember(c) { mutableStateOf(current.takeIf { it > 0 }?.toString() ?: "") }
         AlertDialog(
-            onDismissRequest = { goalEdit = false },
-            containerColor = C.panel,
-            title = { Text("Monthly savings goal", color = C.text) },
-            text = { Field(g, { g = it.filter(Char::isDigit) }, "€ per month", singleLine = true) },
-            confirmButton = {
-                TextButton(onClick = { g.toIntOrNull()?.let { vm.setSavingsGoal(it) }; goalEdit = false }) { Text("Save", color = C.accent) }
-            },
+            onDismissRequest = { edit = null }, containerColor = C.panel,
+            title = { Text(when (c) { "__total" -> "Monthly budget"; "__savings" -> "Monthly savings goal"; else -> "$c limit / month" }, color = C.text) },
+            text = { Field(v, { v = it.filter(Char::isDigit) }, "€ (empty = none)", singleLine = true,
+                keyboard = KeyboardOptions(keyboardType = KeyboardType.Number)) },
+            confirmButton = { TextButton(onClick = {
+                val n = v.toIntOrNull() ?: 0
+                when (c) { "__total" -> vm.setMonthBudget(n); "__savings" -> vm.setSavingsGoal(n); else -> vm.setBudget(c, n) }
+                edit = null
+            }) { Text("Save", color = C.accent) } },
+            dismissButton = { TextButton(onClick = { edit = null }) { Text("Cancel") } },
         )
     }
     vm.claimed?.let { r -> ClaimedOverlay(r) { vm.claimed = null } }
@@ -234,9 +312,9 @@ private fun Check(ok: Boolean, label: String) {
 }
 
 @Composable
-private fun AddRewardDialog(vm: AppViewModel, onClose: () -> Unit) {
-    var name by remember { mutableStateOf("") }
-    var price by remember { mutableStateOf("") }
+fun AddRewardDialog(vm: AppViewModel, initialName: String = "", initialPrice: String = "", onClose: () -> Unit) {
+    var name by remember { mutableStateOf(initialName) }
+    var price by remember { mutableStateOf(initialPrice) }
     var goldCost by remember { mutableStateOf("") }
     var condType by remember { mutableStateOf("none") }
     var level by remember { mutableStateOf("10") }
@@ -307,31 +385,6 @@ private fun AddRewardDialog(vm: AppViewModel, onClose: () -> Unit) {
                 vm.addReward(name, p, goldCost.toIntOrNull(), cond)
                 onClose()
             }) { Text("Add", color = C.accent) }
-        },
-        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } },
-    )
-}
-
-@Composable
-private fun SkipDialog(vm: AppViewModel, onClose: () -> Unit) {
-    var what by remember { mutableStateOf("") }
-    var amount by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onClose,
-        containerColor = C.panel,
-        title = { Text("Impulse resisted", color = C.text) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("What didn't you buy? That money goes to your pot instead.", color = C.muted, fontSize = 13.sp)
-                Field(what, { what = it }, "What", placeholder = "e.g. Takeaway, sneakers…", singleLine = true)
-                Field(amount, { amount = it.filter { c -> c.isDigit() || c == '.' || c == ',' } }, "€", singleLine = true)
-            }
-        },
-        confirmButton = {
-            TextButton(enabled = what.isNotBlank() && amount.isNotBlank(), onClick = {
-                amount.replace(',', '.').toFloatOrNull()?.let { vm.skipped(what.trim(), it) }
-                onClose()
-            }) { Text("Save it", color = C.good) }
         },
         dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } },
     )

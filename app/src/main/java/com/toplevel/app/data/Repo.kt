@@ -549,6 +549,17 @@ Return {"videos":[{"title":"...","channel":"...","why":"one short line","query":
                     "notes" to ("string" to "Their training in their own words (goals, rhythm, constraints)"),
                     "equipment" to ("string" to "Equipment they have")),
                 emptyList()),
+            Claude.tool("set_stat_points",
+                "Fix the user's stat points (from level-ups). Send the stats to change with their NEW point count; the total can't exceed the points earned (see ## Stat points). Use to undo a mis-tap or redistribute when they ask.",
+                mapOf("STR" to ("integer" to "Points in Strength"), "VIT" to ("integer" to "Points in Vitality"),
+                    "INT" to ("integer" to "Points in Intellect"), "DIS" to ("integer" to "Points in Discipline"),
+                    "SPI" to ("integer" to "Points in Spirit"), "reason" to ("string" to "Short reason")),
+                listOf("reason")),
+            Claude.tool("adjust_stat_exp",
+                "Correct a stat's EXP when something went wrong (e.g. EXP missing for a finished quest, or counted twice). Positive adds, negative removes. Only for real errors the user confirms, not as a reward.",
+                mapOf("stat" to ("string" to stats), "amount" to ("integer" to "EXP to add (or remove if negative), -1000..1000"),
+                    "reason" to ("string" to "What is being fixed")),
+                listOf("stat", "amount", "reason")),
             Claude.tool("add_calendar_event", "Create an event in the user's Google Calendar (e.g. to schedule a workout or study block).",
                 mapOf("title" to ("string" to "Event title"),
                     "start" to ("string" to "Local start time, format YYYY-MM-DDTHH:MM"),
@@ -612,6 +623,7 @@ Return {"videos":[{"title":"...","channel":"...","why":"one short line","query":
             if (!prefs.calendarWrite) add("add_calendar_event")
             if (!prefs.extra(Prefs.Extras.VAULT)) { add("add_reward"); add("log_savings") }
             if (!prefs.extra(Prefs.Extras.MONEY)) add("log_expense")
+            if (!prefs.extra(Prefs.Extras.POINTS)) add("set_stat_points")
         }
         return JsonArray(allChatTools.filter { str(it as? JsonObject, "name") !in off })
     }
@@ -754,6 +766,29 @@ Return {"videos":[{"title":"...","channel":"...","why":"one short line","query":
                 deposit(a, str(input, "note").orEmpty())
                 "✓ Saved €${"%.2f".format(a)}"
             }
+            "set_stat_points" -> {
+                val level = Leveling.levelFor(Leveling.totals(game.statTotalsNow()).values.sum())
+                val earned = Growth.pointsEarned(level)
+                val next = Stat.entries.associateWith { st ->
+                    if (input.containsKey(st.short)) int(input, st.short, prefs.points(st)).coerceAtLeast(0) else prefs.points(st)
+                }
+                if (next.values.sum() > earned) "✗ That's ${next.values.sum()} points, but only $earned are earned at level $level"
+                else {
+                    next.forEach { (st, n) -> prefs.setPoints(st, n) }
+                    "✓ Stat points: " + next.entries.joinToString(", ") { "${it.key.short} ${it.value}" } +
+                        " (${earned - next.values.sum()} free)"
+                }
+            }
+            "adjust_stat_exp" -> {
+                val st = Stat.parse(str(input, "stat"))
+                val amt = int(input, "amount").coerceIn(-1000, 1000)
+                if (amt == 0) "✗ Amount is 0" else {
+                    // Raw correction: no stat-point boost, its own reason so it never replaces other EXP
+                    game.insertXp(XpEvent(ts = now(), stat = st, amount = amt, reason = "fix:${now()}:${str(input, "reason").orEmpty().take(60)}"))
+                    Widgets.refresh(ctx)
+                    "✓ ${st.short} ${if (amt > 0) "+" else ""}$amt EXP (${str(input, "reason").orEmpty()})"
+                }
+            }
             "log_weight" -> {
                 val w = str(input, "weight_kg")?.toFloatOrNull() ?: throw IllegalArgumentException("weight")
                 logBody(w, str(input, "waist_cm")?.toFloatOrNull())
@@ -864,6 +899,14 @@ ${buildContext()}${if (prefs.questWishes.isNotBlank()) "\n## Their stored quest 
         val p = Leveling.progress(total)
         sb.append("\n## Level\nLevel ${p.level} (rank ${Leveling.rank(p.level)}), ${total} XP. Stats: ")
             .append(totals.entries.joinToString(", ") { "${it.key.short} ${Leveling.statLevel(it.value)}" }).append("\n")
+
+        if (prefs.extra(Prefs.Extras.POINTS)) {
+            val earned = Growth.pointsEarned(p.level)
+            sb.append("\n## Stat points\nEarned $earned (${Growth.POINTS_PER_LEVEL} per level), spent: ")
+                .append(Stat.entries.joinToString(", ") { "${it.short} ${prefs.points(it)}" })
+                .append(". Free: ${earned - prefs.pointsSpent()}. Each point = +${(Growth.BOOST_PER_POINT * 100).toInt()}% EXP for that stat (max ×2).\n")
+        }
+        sb.append("Stat EXP totals: ").append(totals.entries.joinToString(", ") { "${it.key.short} ${it.value}" }).append("\n")
 
         sb.append("\n## Nutrition goals\n${prefs.kcalGoal} kcal, ${prefs.proteinGoal}g protein, " +
             "${prefs.carbsGoal}g carbs, ${prefs.fatGoal}g fat per day (body goal: ${prefs.bodyGoal})\n")

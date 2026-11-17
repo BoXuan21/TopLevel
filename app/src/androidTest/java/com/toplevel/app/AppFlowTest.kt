@@ -334,8 +334,9 @@ class AppFlowTest {
         scrollTo("Dungeons"); compose.onNodeWithText("Dungeons").assertExists()
         repo.prefs.setExtra("dungeons", false)
 
-        // VAULT: deposit +€10 → pot 350
-        more("Vault"); shot("vault")
+        // MONEY (spending + vault in one page): deposit +€10 → pot 350
+        more("Money"); shot("money")
+        tapText("+ Saved"); settle()
         tapText("+€10")
         waitFor("pot €350") { repo.db.vault().potNow() >= 349.9f }
         settle(); dismissPopups(); scroll(); shot("vault_rewards")
@@ -417,7 +418,7 @@ class AppFlowTest {
 
     @Test fun rewardRedemptionAndSavings() {
         dismissPopups()
-        more("Vault")
+        more("Money")
         // Rings: enough gold (1240 ≥ 150), pot 340 ≥ 45, cool-down passed → claimable
         // In case a snackbar is showing, wait until it stops covering the button
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Claude API", substring = true).fetchSemanticsNodes().isEmpty() }

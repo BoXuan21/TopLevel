@@ -104,7 +104,7 @@ class Prefs(ctx: Context) {
         "job_json" to jobJson, "jobs_done" to jobsDone, "theme" to theme, "dungeons_cleared" to dungeonsCleared.toString(),
         "budgets" to budgets, "month_budget" to monthBudget.toString(),
         "sports" to sports, "sport_notes" to sportNotes, "quest_wishes" to questWishes, "week_plan" to weekPlanJson,
-        "extras" to extrasOn.joinToString(","),
+        "extras" to extrasOn.joinToString(","), "shop_recent" to shopRecent,
     ) + Stat.entries.associate { "pts_${it.name}" to points(it).toString() }
 
     fun importMap(m: Map<String, String>) {
@@ -141,8 +141,14 @@ class Prefs(ctx: Context) {
         m["quest_wishes"]?.let { questWishes = it }
         m["week_plan"]?.let { weekPlanJson = it }
         m["extras"]?.let { extrasOn = it.split(",").filter { s -> s.isNotBlank() }.toSet() }
+        m["shop_recent"]?.let { shopRecent = it }
         Stat.entries.forEach { s -> m["pts_${s.name}"]?.toIntOrNull()?.let { setPoints(s, it) } }
     }
+
+    /** Last shop searches, newline-separated, newest first. */
+    var shopRecent: String
+        get() = sp.getString("shop_recent", "") ?: ""
+        set(v) = sp.edit().putString("shop_recent", v).apply()
 
     /** Extra game systems. All off until the user turns them on; their data is kept either way. */
     object Extras {
@@ -154,8 +160,7 @@ class Prefs(ctx: Context) {
             E(DUNGEONS, "⛩", "Dungeons", "Timed challenges; quitting early gives a penalty quest"),
             E(JOB, "♛", "Job change", "Multi-week questlines that unlock titles and colour themes"),
             E(POINTS, "▲", "Stat points", "Spend points from level-ups to boost a stat's EXP"),
-            E(VAULT, "◈", "Vault & Gold", "Earn Gold, save money, unlock real-life rewards"),
-            E(MONEY, "€", "Spending", "Log spending, monthly budgets, no-spend streak"),
+            E(VAULT, "€", "Money & Gold", "Spending, savings, Gold and real-life rewards on one page"),
             E(FOCUS, "◷", "Focus timer", "25/50/90-minute deep-work blocks"),
         )
     }
@@ -234,10 +239,12 @@ class Prefs(ctx: Context) {
         set(v) = sp.edit().putString("sport_notes", v.trim()).apply()
 
     /** Optional features the user switched on (see [Extras]). Off by default to keep the app simple. */
-    fun extra(id: String): Boolean = id in extrasOn
+    fun extra(id: String): Boolean = ids(id).any { it in extrasOn }
     fun setExtra(id: String, on: Boolean) {
-        extrasOn = if (on) extrasOn + id else extrasOn - id
+        extrasOn = if (on) extrasOn + ids(id) else extrasOn - ids(id)
     }
+    /** Spending and Vault were two extras up to build 21; now they're one "Money" page. Either id switches both. */
+    private fun ids(id: String) = if (id == Extras.VAULT || id == Extras.MONEY) setOf(Extras.VAULT, Extras.MONEY) else setOf(id)
     var extrasOn: Set<String>
         get() = (sp.getString("extras", "") ?: "").split(",").filter { it.isNotBlank() }.toSet()
         set(v) = sp.edit().putString("extras", v.joinToString(",")).apply()

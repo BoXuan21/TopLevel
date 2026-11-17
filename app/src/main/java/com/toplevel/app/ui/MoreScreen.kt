@@ -50,19 +50,20 @@ private val groups = listOf(
         Entry("dungeons", "⛩", "Dungeons", "Timed challenges", C.bad),
     ),
     "MONEY" to listOf(
-        Entry("money", "€", "Spending", "Limits and no-spend streak", C.warn),
-        Entry("vault", "◈", "Vault", "Gold, savings, rewards", C.warn),
+        Entry("money", "€", "Money", "Spending, savings, Gold, rewards", C.warn),
+        Entry("shop", "⌕", "Shop", "Find the cheapest price across shops", C.warn),
     ),
     "APP" to listOf(
-        Entry("extras", "✚", "More features", "Turn on extras: boss, dungeons, Gold, budgets…", C.accent),
+        Entry("extras", "✚", "More features", "Turn on extras: boss, dungeons, money & Gold…", C.accent),
         Entry("settings", "⚙", "Settings", "API key, goals, plans, health, sound", C.muted),
     ),
 )
 
 /** Menu entries that belong to an extra. */
-private val extraOf = mapOf("job" to "job", "dungeons" to "dungeons", "money" to "money", "vault" to "vault")
+private val extraOf = mapOf("job" to "job", "dungeons" to "dungeons", "money" to "money")
 
-private val titles = groups.flatMap { it.second }.associate { it.id to it.title } + ("menu" to "Menu") + ("extras" to "More features")
+private val titles = groups.flatMap { it.second }.associate { it.id to it.title } + ("menu" to "Menu") + ("extras" to "More features") +
+    ("vault" to "Money")
 
 @Composable
 fun MoreScreen(vm: AppViewModel, actions: Actions, page: String, open: (String) -> Unit, back: () -> Unit) {
@@ -79,11 +80,11 @@ fun MoreScreen(vm: AppViewModel, actions: Actions, page: String, open: (String) 
                 "menu" -> Menu(vm, open)
                 "status" -> StatusScreen(vm)
                 "body" -> BodyPage(vm)
-                "vault" -> VaultScreen(vm)
+                "vault", "money" -> MoneyScreen(vm)
+                "shop" -> ShopScreen(vm)
                 "review" -> ReviewPage(vm)
                 "job" -> JobPage(vm)
                 "dungeons" -> DungeonPage(vm)
-                "money" -> MoneyPage(vm)
                 "skills" -> SkillsPage(vm)
                 "discover" -> DiscoverPage(vm)
                 "mycards" -> CardsPage(vm)

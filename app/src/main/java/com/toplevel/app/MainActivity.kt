@@ -230,6 +230,8 @@ private fun Root(vm: AppViewModel, openTarget: String?, consumeTarget: () -> Uni
             Box(Modifier.fillMaxSize().padding(pad)) {
                 Row(Modifier.fillMaxSize()) {
                     Box(Modifier.weight(1f)) {
+                        // Pull down to refresh everywhere except the coach chat (it scrolls the other way)
+                        Refreshable(vm, enabled = page != null || tab != COACH) {
                         if (page != null) {
                             MoreScreen(vm, actions, page, open = ::open, back = ::back)
                         } else AnimatedContent(tab, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(120)) }, label = "tab") { t ->
@@ -241,6 +243,7 @@ private fun Root(vm: AppViewModel, openTarget: String?, consumeTarget: () -> Uni
                                 JOURNAL -> com.toplevel.app.ui.JournalTab(vm)
                                 else -> CoachScreen(vm)
                             }
+                        }
                         }
                     }
                     // Fold unfolded: coach always open on the right
@@ -264,6 +267,25 @@ private fun Root(vm: AppViewModel, openTarget: String?, consumeTarget: () -> Uni
 
         PopupHost()
     }
+}
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun Refreshable(vm: AppViewModel, enabled: Boolean, content: @Composable () -> Unit) {
+    if (!enabled) { content(); return }
+    val state = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+        isRefreshing = vm.refreshing,
+        onRefresh = { vm.pullRefresh() },
+        modifier = Modifier.fillMaxSize(),
+        state = state,
+        indicator = {
+            androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator(
+                state = state, isRefreshing = vm.refreshing, modifier = Modifier.align(Alignment.TopCenter),
+                containerColor = C.panel, color = C.accent,
+            )
+        },
+    ) { content() }
 }
 
 @Composable
