@@ -34,7 +34,13 @@ class Claude(private val prefs: Prefs) {
 
     val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
-    /** Raw call. Returns the full response object. */
+    /**
+     * Raw call. Returns the full response object.
+     *
+     * Token saving: in eco mode (default) every call runs on the cheap model, and all calls ask for
+     * low effort (thinking is billed as output). [system] is the stable part (cached when [cache]);
+     * [dynamic] is appended after it, so the stable part keeps hitting the cache across messages.
+     */
     suspend fun send(
         system: String,
         messages: JsonArray,
@@ -43,24 +49,30 @@ class Claude(private val prefs: Prefs) {
         small: Boolean = false,
         cache: Boolean = false,
         toolChoice: JsonObject? = null,
+        dynamic: String? = null,
     ): JsonObject = withContext(Dispatchers.IO) {
         if (!prefs.hasKey) throw ClaudeException("Add your Anthropic API key in Setup first.")
+        val model = modelFor(small)
         val body = buildJsonObject {
-            // Small, well-defined jobs (macros, summaries) run on the cheaper fast model
-            put("model", if (small) SMALL_MODEL else prefs.model)
+            put("model", model)
             put("max_tokens", maxTokens)
-            if (cache) {
-                // Cache the (large) system prompt so repeated chat/tool rounds re-use it cheaply
+            if (cache || dynamic != null) {
                 put("system", buildJsonArray {
                     add(buildJsonObject {
                         put("type", "text"); put("text", system)
-                        put("cache_control", buildJsonObject { put("type", "ephemeral") })
+                        if (cache) put("cache_control", buildJsonObject { put("type", "ephemeral") })
+                    })
+                    if (dynamic != null) add(buildJsonObject {
+                        put("type", "text"); put("text", dynamic)
+                        // Second breakpoint: tool rounds of the same message re-read it from cache
+                        if (cache) put("cache_control", buildJsonObject { put("type", "ephemeral") })
                     })
                 })
             } else put("system", system)
             put("messages", messages)
             if (tools != null) put("tools", tools)
             if (toolChoice != null) put("tool_choice", toolChoice)
+            if (supportsEffort(model)) put("output_config", buildJsonObject { put("effort", "low") })
         }
         val req = Request.Builder()
             .url("https://api.anthropic.com/v1/messages")
@@ -78,8 +90,20 @@ class Claude(private val prefs: Prefs) {
                 } catch (_: Exception) { null }
                 throw ClaudeException("Claude API ${resp.code}: ${msg ?: text.take(200)}")
             }
-            json.parseToJsonElement(text).jsonObject
+            json.parseToJsonElement(text).jsonObject.also { trackUsage(model, it) }
         }
+    }
+
+    /** Eco mode: everything on the cheap model. Otherwise the chosen model, and the cheap one for small jobs. */
+    fun modelFor(small: Boolean): String = if (prefs.eco || small) SMALL_MODEL else prefs.model
+
+    /** Adds this call's tokens and estimated cost to the monthly counters shown in Settings. */
+    private fun trackUsage(model: String, res: JsonObject) {
+        val u = res["usage"] as? JsonObject ?: return
+        fun n(k: String) = str(u, k)?.toLongOrNull() ?: 0L
+        prefs.addUsage(n("input_tokens"), n("output_tokens"), n("cache_read_input_tokens"),
+            n("cache_creation_input_tokens"), costUsd(model, n("input_tokens"), n("output_tokens"),
+                n("cache_read_input_tokens"), n("cache_creation_input_tokens")))
     }
 
     /**
@@ -127,8 +151,28 @@ class Claude(private val prefs: Prefs) {
     fun extractJson(txt: String): JsonElement? = extractJsonText(txt)
 
     companion object {
-        /** Fast, cheap model for small structured jobs. */
+        /** Fast, cheap model for small structured jobs (and everything in eco mode). */
         const val SMALL_MODEL = "claude-haiku-5-5"
+
+        /** Effort ("low") is accepted by the Claude 5 family and Opus/Sonnet 4.6+; older models reject it. */
+        fun supportsEffort(model: String): Boolean =
+            Regex("claude-(opus|sonnet|haiku|fable|mythos)-5|claude-opus-4-[678]|claude-sonnet-4-6").containsMatchIn(model)
+
+        /** $ per million tokens (input, output); cache reads 0.1×, cache writes 1.25× input. */
+        fun pricePerM(model: String): Pair<Double, Double> = when {
+            "haiku-5" in model -> 0.10 to 0.50
+            "haiku" in model -> 1.0 to 5.0
+            "sonnet" in model -> 2.0 to 10.0
+            "opus-5-5" in model -> 4.0 to 20.0
+            "opus" in model -> 5.0 to 25.0
+            "fable-5-2" in model || "mythos-5-2" in model -> 8.0 to 40.0
+            else -> 10.0 to 50.0
+        }
+
+        fun costUsd(model: String, input: Long, output: Long, cacheRead: Long, cacheWrite: Long): Double {
+            val (i, o) = pricePerM(model)
+            return (input * i + output * o + cacheRead * i * 0.1 + cacheWrite * i * 1.25) / 1_000_000.0
+        }
 
         /** Tight budgets were the main cause of cut-off (= invalid) JSON. Thinking also uses this budget. */
         const val MIN_JSON_TOKENS = 1500

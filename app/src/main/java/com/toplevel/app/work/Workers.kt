@@ -62,7 +62,7 @@ object Notifier {
     }
 }
 
-/** Morning: build quests + discovery feed, then notify. */
+/** Morning: build quests, then notify. */
 class MorningWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
         val repo = Repo.get(applicationContext)
@@ -73,7 +73,6 @@ class MorningWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
             repo.applyPenalties()
             repo.generateQuests()
         }
-        repo.generateDiscover()
         if (repo.prefs.extra("boss")) repo.generateBoss()
         val quests = repo.game.questsForNow(day)
         Notifier.show(applicationContext, 1, "⚔ Daily quests are ready",

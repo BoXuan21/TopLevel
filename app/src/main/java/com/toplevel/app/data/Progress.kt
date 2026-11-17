@@ -134,7 +134,7 @@ suspend fun Repo.progressionTip(exercise: String): String {
         "You are a strength coach. Using progressive overload, give the exact target for the user's NEXT session of this exercise " +
             "(weight × reps × sets) and one technique/recovery cue. Max 4 short lines, plain text (no markdown, no **bold**). " +
             "Match the user's language.",
-        "Exercise: $exercise\nHistory:\n${lines.ifBlank { "(none yet)" }}\n\nUser context:\n${buildContext().take(3000)}",
+        "Exercise: $exercise\nHistory:\n${lines.ifBlank { "(none yet)" }}\n\nUser context:\n${buildContext(lite = true).take(1500)}",
         400,
     )
 }
@@ -173,7 +173,7 @@ suspend fun Repo.generateBoss(force: Boolean = false): String? {
 1) Write last week's report (5-8 short lines): quest completion, training, nutrition, sleep/steps, mood trends, wins, the one thing holding them back. Be specific with numbers from the data.
 2) Design this week's BOSS: one ambitious-but-achievable weekly goal that attacks their biggest weakness or pushes their main goal. Give it a dramatic name.
 Return {"report": "...", "boss_name": "...", "boss_goal": "concrete measurable goal for the week", "xp": 150-300}""",
-            user = buildContext() + "\n\n## Last week quests: ${last.count { it.done }}/${last.size} done",
+            user = buildContext(lite = true) + "\n\n## Last week quests: ${last.count { it.done }}/${last.size} done",
             maxTokens = 1500,
         ).jsonObject
         fit.upsertBoss(WeeklyBoss(week, str(o, "boss_name") ?: "Weekly Boss", str(o, "boss_goal").orEmpty(),

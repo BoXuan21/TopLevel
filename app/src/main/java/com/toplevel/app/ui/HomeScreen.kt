@@ -58,8 +58,7 @@ fun HomeScreen(vm: AppViewModel, openFood: () -> Unit, openCheckIn: () -> Unit, 
     var wishesOpen by remember { mutableStateOf(false) }
     val hour = LocalTime.now().hour
 
-    // Keep the advice fresh (at most every 3 h), once the morning AI work is done
-    LaunchedEffect(vm.busy) { if (vm.busy == null && vm.adviceStale) vm.refreshAdvice() }
+    // AI advice only when you tap ↻ (saves tokens); until then the free local suggestions show
 
     val kcal = food.sumOf { it.kcal }
     val protein = food.sumOf { it.protein }

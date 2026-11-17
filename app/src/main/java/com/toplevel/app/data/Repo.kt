@@ -364,7 +364,8 @@ Return: [{"title": "...", "detail": "short how/when", "stat": "STRENGTH", "xp": 
             system = "Suggest the next 5 concrete things the user should learn, ordered, based on their work, " +
                 "learning goals, and what they already know. Avoid duplicates of existing skill items. " +
                 "Return [{\"title\": \"...\", \"area\": \"e.g. Kubernetes\", \"why\": \"one line\"}].",
-            user = buildContext(),
+            user = buildContext(lite = true) + "\n## Already in the skill tree\n" +
+                life.skillsNow().joinToString("\n") { "- [${it.status}] ${it.title}" },
         ) as? JsonArray ?: JsonArray(emptyList())
         arr.mapNotNull { it as? JsonObject }.forEach { o ->
             val t = str(o, "title") ?: return@forEach
@@ -391,7 +392,7 @@ Write a short, honest, warm reflection (3-5 sentences): name a pattern you see a
 acknowledge what went well, and give ONE specific, small improvement for tomorrow.
 Also create one quest for tomorrow that implements that improvement.
 Return {"reflection": "...", "tomorrow_quest": {"title": "...", "detail": "...", "stat": "SPIRIT", "xp": 25}}""",
-                user = buildContext() + "\n\n## Tonight's check-in\nMood ${c.mood}/5, energy ${c.energy}/5, " +
+                user = buildContext(lite = true) + "\n\n## Tonight's check-in\nMood ${c.mood}/5, energy ${c.energy}/5, " +
                     "sleep ${c.sleepHours}h\nDay: ${c.dayText}\nWent well: ${c.wentWell}\nWould improve: ${c.improve}",
             ).jsonObject
             life.upsertCheckIn(c.copy(reflection = str(o, "reflection").orEmpty()))
@@ -828,10 +829,10 @@ You can change the app for them, not just advise. When they ask for a change, or
 - Sports / equipment: update_training_profile. Nutrition targets: set_nutrition_goals.
 Small, clearly wanted changes: just do them. Big changes they didn't ask for (rewriting the whole week, replacing all quests): propose first, act after they agree.
 Their calendar holds their appointments: treat them as fixed and plan around them.${if (!prefs.calendarWrite) " You can't add calendar events; suggest times instead." else ""}
-Match their training level and equipment (see Training profile); adapt to what they've already done today (steps, sets, food logged).
-
-${buildContext()}${if (prefs.questWishes.isNotBlank()) "\n## Their stored quest wishes\n${prefs.questWishes}\n" else ""}"""
-            val history = life.recentChat(16)
+Match their training level and equipment (see Training profile); adapt to what they've already done today (steps, sets, food logged)."""
+            // Changes every message (time, food, quests): kept out of the cached part above
+            val dynamic = buildContext() + if (prefs.questWishes.isNotBlank()) "\n## Their stored quest wishes\n${prefs.questWishes}\n" else ""
+            val history = life.recentChat(12)
             val msgs = mutableListOf<JsonObject>()
             // API requires alternating roles starting with user; merge consecutive same-role messages.
             history.forEach { m ->
@@ -850,7 +851,7 @@ ${buildContext()}${if (prefs.questWishes.isNotBlank()) "\n## Their stored quest 
             val actions = mutableListOf<String>()
             var finalText = ""
             for (round in 0 until 8) {
-                val res = claude.send(system, JsonArray(convo), chatTools(), maxTokens = 4000, cache = true)
+                val res = claude.send(system, JsonArray(convo), chatTools(), maxTokens = 4000, cache = true, dynamic = dynamic)
                 val content = res["content"]?.jsonArray ?: JsonArray(emptyList())
                 val text = Claude.textOf(res)
                 if (text.isNotBlank()) finalText = text
@@ -924,13 +925,14 @@ ${buildContext()}${if (prefs.questWishes.isNotBlank()) "\n## Their stored quest 
         val plans = life.plansNow().filter { it.content.isNotBlank() }
         if (plans.isNotEmpty()) {
             sb.append("\n## Stored plans\n")
-            plans.forEach { sb.append("### ${PlanType.label(it.type)}\n${it.content.take(if (lite) 900 else if (it.type == PlanType.TRAINING) PlanImport.MAX_CHARS else 4000)}\n\n") }
+            // Trimmed: the training schedule is already in "Weekly sport plan"; long plans were the biggest token cost
+            plans.forEach { sb.append("### ${PlanType.label(it.type)}\n${it.content.take(if (lite) 700 else if (it.type == PlanType.TRAINING) 2500 else 1500)}\n\n") }
         }
 
         val mems = life.memoriesNow()
         if (mems.isNotEmpty()) {
             sb.append("\n## Things to remember about the user\n")
-            mems.take(40).forEach { sb.append("- ${it.text}\n") }
+            mems.take(if (lite) 15 else 30).forEach { sb.append("- ${it.text}\n") }
         }
 
         if (prefs.useCalendar) {
@@ -973,19 +975,19 @@ ${buildContext()}${if (prefs.questWishes.isNotBlank()) "\n## Their stored quest 
             }).append("\n")
         }
 
-        val checkIns = life.recentCheckIns(if (lite) 1 else 7)
+        val checkIns = life.recentCheckIns(if (lite) 1 else 3)
         if (checkIns.isNotEmpty()) {
             sb.append("\n## Recent check-ins\n")
             checkIns.forEach {
                 sb.append("- ${LocalDate.ofEpochDay(it.date)}: mood ${it.mood}/5, energy ${it.energy}/5, sleep ${it.sleepHours}h. " +
-                    "${it.dayText.take(300)} | well: ${it.wentWell.take(150)} | improve: ${it.improve.take(150)}\n")
+                    "${it.dayText.take(200)} | well: ${it.wentWell.take(100)} | improve: ${it.improve.take(100)}\n")
             }
         }
 
         val logs = if (lite) emptyList() else life.logsSince(day - 7)
         if (logs.isNotEmpty()) {
             sb.append("\n## Logs (last 7 days)\n")
-            logs.takeLast(40).forEach { sb.append("- ${LocalDate.ofEpochDay(it.date)} [${it.category}] ${it.text.take(200)}\n") }
+            logs.takeLast(15).forEach { sb.append("- ${LocalDate.ofEpochDay(it.date)} [${it.category}] ${it.text.take(150)}\n") }
         }
 
         val pastQuests = if (lite) emptyList() else game.questsSince(day - 7).filter { it.date < day }
@@ -1006,9 +1008,9 @@ ${buildContext()}${if (prefs.questWishes.isNotBlank()) "\n## Their stored quest 
             }
         }
 
-        val sets = fit.setsSince(if (lite) day else day - 14)
+        val sets = fit.setsSince(if (lite) day else day - 7)
         if (sets.isNotEmpty()) {
-            sb.append("\n## Strength log (last 14 days)\n")
+            sb.append("\n## Strength log (last 7 days)\n")
             sets.groupBy { it.date }.toSortedMap().forEach { (d, l) ->
                 sb.append("- ${LocalDate.ofEpochDay(d)}: ")
                 sb.append(l.groupBy { it.exercise.lowercase() }.values.joinToString("; ") { ex ->
@@ -1020,7 +1022,7 @@ ${buildContext()}${if (prefs.questWishes.isNotBlank()) "\n## Their stored quest 
         val body = fit.bodySince(day - if (lite) 14 else 60)
         if (body.isNotEmpty()) {
             sb.append("\n## Body weight\n")
-            body.takeLast(15).forEach { sb.append("- ${LocalDate.ofEpochDay(it.date)}: ${it.weightKg} kg${it.waistCm?.let { w -> ", waist $w cm" } ?: ""}\n") }
+            body.takeLast(8).forEach { sb.append("- ${LocalDate.ofEpochDay(it.date)}: ${it.weightKg} kg${it.waistCm?.let { w -> ", waist $w cm" } ?: ""}\n") }
         }
 
         val v = db.vault()
@@ -1058,7 +1060,7 @@ ${buildContext()}${if (prefs.questWishes.isNotBlank()) "\n## Their stored quest 
         val skills = if (lite) emptyList() else life.skillsNow()
         if (skills.isNotEmpty()) {
             sb.append("\n## Skill tree\n")
-            skills.take(40).forEach { sb.append("- [${it.status}] ${it.title}${if (it.area.isNotBlank()) " (${it.area})" else ""}\n") }
+            skills.filter { it.status != "learned" }.take(20).forEach { sb.append("- [${it.status}] ${it.title}${if (it.area.isNotBlank()) " (${it.area})" else ""}\n") }
         }
         return sb.toString()
     }

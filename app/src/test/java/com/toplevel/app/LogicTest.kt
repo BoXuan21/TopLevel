@@ -242,4 +242,22 @@ class LogicTest {
         val r = com.toplevel.app.data.Shop.remember("ssd 2tb\nRTX 5070", "rtx 5070")
         assertEquals(listOf("rtx 5070", "ssd 2tb"), r.lines())
     }
+
+    @Test fun lowEffortOnlyWhereSupported() {
+        val c = com.toplevel.app.ai.Claude
+        assertTrue(c.supportsEffort("claude-haiku-5-5"))
+        assertTrue(c.supportsEffort("claude-sonnet-5-5"))
+        assertTrue(c.supportsEffort("claude-opus-4-7"))
+        assertTrue(!c.supportsEffort("claude-haiku-4-5"))
+        assertTrue(!c.supportsEffort("claude-sonnet-4-5"))
+    }
+
+    @Test fun costEstimate() {
+        val c = com.toplevel.app.ai.Claude
+        // 1M in + 1M out on Haiku 5.5 = $0.10 + $0.50
+        assertEquals(0.60, c.costUsd("claude-haiku-5-5", 1_000_000, 1_000_000, 0, 0), 1e-9)
+        // Cache reads cost a tenth of input
+        assertEquals(0.20, c.costUsd("claude-sonnet-5-5", 0, 0, 1_000_000, 0), 1e-9)
+        assertTrue(c.costUsd("claude-sonnet-5-5", 1000, 1000, 0, 0) > 15 * c.costUsd("claude-haiku-5-5", 1000, 1000, 0, 0))
+    }
 }

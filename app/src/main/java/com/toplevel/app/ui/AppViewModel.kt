@@ -221,10 +221,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 "Your orders for today are in.", lines = qs.take(6).map { it.title },
                 reward = "Clear them all: +${com.toplevel.app.game.Rewards.ALL_QUESTS_BONUS} DIS bonus"))
             val e2 = if (prefs.extra("boss")) repo.generateBoss() else null
-            val e3 = repo.generateDiscover()
-            e1 ?: e2 ?: e3
-        } else if (prefs.hasKey && prefs.lastDiscoverGen != day) run("Finding today's discoveries…") {
-            repo.generateDiscover()
+            // Discoveries are made when you tap ↻ on them, not every morning (saves tokens)
+            e1 ?: e2
         }
     }
 
@@ -251,7 +249,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 refreshStreak()
                 water = prefs.water(day)
-                if (prefs.hasKey && adviceStale) refreshAdvice()
             } catch (e: Exception) {
                 message = e.message
             } finally {

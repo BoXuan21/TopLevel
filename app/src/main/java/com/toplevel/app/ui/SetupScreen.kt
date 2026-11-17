@@ -94,6 +94,25 @@ fun SetupScreen(
                     GhostButton("Save") { p.apiKey = key; p.model = model; vm.message = "Saved" }
                     GhostButton("Test", enabled = vm.busy == null) { p.apiKey = key; p.model = model; vm.testKey() }
                 }
+                Spacer(Modifier.height(12.dp))
+                var eco by remember { mutableStateOf(p.eco) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Eco mode", color = C.text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(if (eco) "Everything runs on ${com.toplevel.app.ai.Claude.SMALL_MODEL} (about 20x cheaper)."
+                            else "Coach, quests and plans use the model above; small jobs stay on the cheap one.",
+                            color = C.muted, fontSize = 12.sp)
+                    }
+                    Switch(checked = eco, onCheckedChange = { eco = it; p.eco = it },
+                        colors = SwitchDefaults.colors(checkedTrackColor = C.accent))
+                }
+                Spacer(Modifier.height(10.dp))
+                val u = remember(vm.busy) { p.usage() }
+                Text("THIS MONTH", color = C.muted, fontSize = 10.sp, fontFamily = Fonts.tech)
+                Text("${u.calls} AI calls · " + "%,d".format(u.input + u.cacheRead) + " in / " + "%,d".format(u.output) +
+                    " out tokens · about " + "%.2f".format(u.costUsd) + " USD", color = C.text, fontSize = 13.sp)
+                if (u.cacheRead > 0) Text("%,d".format(u.cacheRead) + " input tokens came from the cache (90% cheaper).",
+                    color = C.muted, fontSize = 12.sp)
             }
         }
 

@@ -104,7 +104,7 @@ class Prefs(ctx: Context) {
         "job_json" to jobJson, "jobs_done" to jobsDone, "theme" to theme, "dungeons_cleared" to dungeonsCleared.toString(),
         "budgets" to budgets, "month_budget" to monthBudget.toString(),
         "sports" to sports, "sport_notes" to sportNotes, "quest_wishes" to questWishes, "week_plan" to weekPlanJson,
-        "extras" to extrasOn.joinToString(","), "shop_recent" to shopRecent,
+        "extras" to extrasOn.joinToString(","), "shop_recent" to shopRecent, "eco" to eco.toString(),
     ) + Stat.entries.associate { "pts_${it.name}" to points(it).toString() }
 
     fun importMap(m: Map<String, String>) {
@@ -142,7 +142,29 @@ class Prefs(ctx: Context) {
         m["week_plan"]?.let { weekPlanJson = it }
         m["extras"]?.let { extrasOn = it.split(",").filter { s -> s.isNotBlank() }.toSet() }
         m["shop_recent"]?.let { shopRecent = it }
+        m["eco"]?.toBooleanStrictOrNull()?.let { eco = it }
         Stat.entries.forEach { s -> m["pts_${s.name}"]?.toIntOrNull()?.let { setPoints(s, it) } }
+    }
+
+    /** Eco mode: every AI call on the cheapest model (on by default). */
+    var eco: Boolean
+        get() = sp.getBoolean("eco", true)
+        set(v) = sp.edit().putBoolean("eco", v).apply()
+
+    /** API use this month: tokens and estimated cost (reset when the month changes). */
+    data class Usage(val month: String, val calls: Long, val input: Long, val output: Long, val cacheRead: Long, val costUsd: Double)
+    @Synchronized fun addUsage(input: Long, output: Long, cacheRead: Long, cacheWrite: Long, costUsd: Double) {
+        val u = usage()
+        sp.edit().putString("usage_month", u.month).putLong("usage_calls", u.calls + 1)
+            .putLong("usage_in", u.input + input + cacheWrite).putLong("usage_out", u.output + output)
+            .putLong("usage_cache", u.cacheRead + cacheRead)
+            .putLong("usage_cost_micro", ((u.costUsd + costUsd) * 1_000_000).toLong()).apply()
+    }
+    fun usage(): Usage {
+        val month = java.time.YearMonth.now().toString()
+        if (sp.getString("usage_month", "") != month) return Usage(month, 0, 0, 0, 0, 0.0)
+        return Usage(month, sp.getLong("usage_calls", 0), sp.getLong("usage_in", 0), sp.getLong("usage_out", 0),
+            sp.getLong("usage_cache", 0), sp.getLong("usage_cost_micro", 0) / 1_000_000.0)
     }
 
     /** Last shop searches, newline-separated, newest first. */
