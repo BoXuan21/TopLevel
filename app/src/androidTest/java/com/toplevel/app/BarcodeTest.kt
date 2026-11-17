@@ -23,6 +23,14 @@ class BarcodeTest {
         assertEquals(code, FoodScan.readBarcode(ean13(code)))
     }
 
+    /** Products scanned before come from the phone: instant, and no network needed. */
+    @Test fun scannedProductsAreRemembered() = runBlocking {
+        val ctx = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        val p = com.toplevel.app.data.Product("9990000000017", "Test skyr", 63.0, 11.0, 4.0, 0.2, 150.0)
+        FoodScan.remember(ctx, p)
+        assertEquals(p, FoodScan.lookup(ctx, "9990000000017"))
+    }
+
     private fun ean13(code: String): Bitmap {
         val l = listOf("0001101", "0011001", "0010011", "0111101", "0100011", "0110001", "0101111", "0111011", "0110111", "0001011")
         val g = listOf("0100111", "0110011", "0011011", "0100001", "0011101", "0111001", "0000101", "0010001", "0001001", "0010111")

@@ -27,6 +27,7 @@ import kotlin.coroutines.resumeWithException
 import kotlin.math.roundToInt
 
 /** A packaged product from Open Food Facts, values per 100 g. */
+@kotlinx.serialization.Serializable
 data class Product(
     val code: String,
     val name: String,
@@ -46,7 +47,8 @@ data class Product(
 }
 
 object FoodScan {
-    private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
+    private val http = OkHttpClient.Builder().connectTimeout(12, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS)
+        .callTimeout(30, TimeUnit.SECONDS).retryOnConnectionFailure(true).build()
     private val json = Json { ignoreUnknownKeys = true }
 
     /** Loads a photo, scaled so the long side is at most [maxSide] px. */
@@ -79,19 +81,55 @@ object FoodScan {
             .addOnCompleteListener { scanner.close() }
     }
 
-    /** Looks up a barcode in Open Food Facts. Null when unknown. */
-    suspend fun lookup(code: String): Product? = withContext(Dispatchers.IO) {
+    /** Open Food Facts didn't answer (slow or down), as opposed to "product unknown". */
+    class Unreachable(cause: Throwable) : Exception("Open Food Facts isn't answering right now", cause)
+
+    /**
+     * Looks up a barcode: first in the products scanned before (instant, works offline),
+     * then in Open Food Facts with up to 3 tries. Null when the product is unknown.
+     */
+    suspend fun lookup(ctx: Context, code: String): Product? = withContext(Dispatchers.IO) {
+        cached(ctx, code)?.let { return@withContext it }
+        var last: Exception? = null
+        repeat(3) { attempt ->
+            try {
+                return@withContext lookupOnline(code)?.also { remember(ctx, it) }
+            } catch (e: java.io.IOException) {
+                last = e
+                kotlinx.coroutines.delay(1500L * (attempt + 1))
+            }
+        }
+        throw Unreachable(last ?: java.io.IOException("timeout"))
+    }
+
+    private fun lookupOnline(code: String): Product? {
         val req = Request.Builder()
             .url("https://world.openfoodfacts.org/api/v2/product/$code.json?fields=product_name,brands,nutriments,serving_quantity")
             .header("User-Agent", "TopLevel/1.0 (Android; personal tracker)")
             .build()
         http.newCall(req).execute().use { r ->
-            if (!r.isSuccessful) return@withContext null
+            if (r.code == 404) return null
+            if (!r.isSuccessful) throw java.io.IOException("HTTP ${r.code}")
             val o = json.parseToJsonElement(r.body?.string().orEmpty()).jsonObject
-            if ((o["status"] as? JsonPrimitive)?.contentOrNull != "1") return@withContext null
-            val p = o["product"]?.jsonObject ?: return@withContext null
-            productOf(p, code)
+            if ((o["status"] as? JsonPrimitive)?.contentOrNull != "1") return null
+            val p = o["product"]?.jsonObject ?: return null
+            return productOf(p, code)
         }
+    }
+
+    // ───── products scanned or picked before, kept on the phone (newest last, max 300) ─────
+    private const val MAX_CACHED = 300
+    private fun store(ctx: Context) = ctx.getSharedPreferences("products", Context.MODE_PRIVATE)
+    private fun all(ctx: Context): List<Product> = try {
+        json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(Product.serializer()), store(ctx).getString("list", "[]") ?: "[]")
+    } catch (_: Exception) { emptyList() }
+
+    fun cached(ctx: Context, code: String): Product? = if (code.isBlank()) null else all(ctx).lastOrNull { it.code == code }
+
+    @Synchronized fun remember(ctx: Context, p: Product) {
+        if (p.code.isBlank()) return
+        val list = (all(ctx).filter { it.code != p.code } + p).takeLast(MAX_CACHED)
+        store(ctx).edit().putString("list", json.encodeToString(kotlinx.serialization.builtins.ListSerializer(Product.serializer()), list)).apply()
     }
 
     /** Text search ("nöm pro 35"). Results are cached per query. */

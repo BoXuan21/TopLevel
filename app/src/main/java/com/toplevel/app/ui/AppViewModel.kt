@@ -305,7 +305,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun scanBarcode(uri: Uri) = run("Reading barcode…") {
         val bmp = FoodScan.loadBitmap(getApplication(), uri, maxSide = 2000)
         val code = FoodScan.readBarcode(bmp) ?: return@run "No barcode found. Hold the camera closer and keep it sharp."
-        val p = FoodScan.lookup(code) ?: return@run "Product $code isn't in Open Food Facts. Try a photo of the label instead."
+        val p = try {
+            FoodScan.lookup(getApplication(), code)
+        } catch (e: FoodScan.Unreachable) {
+            return@run "Open Food Facts isn't answering right now (barcode $code). Try again in a minute, or SNAP MEAL on the nutrition label."
+        } ?: return@run "Product $code isn't in Open Food Facts. Try a photo of the label instead."
         scanned = p
         null
     }
@@ -367,7 +371,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun clearFoodSearch() { searchJob?.cancel(); foodHits = FoodHits() }
     fun logDish(d: com.toplevel.app.data.Dish) { clearFoodSearch(); io { logMacros(d.macros()) } }
-    fun pickProduct(p: Product) { clearFoodSearch(); scanned = p }
+    fun pickProduct(p: Product) { clearFoodSearch(); scanned = p; FoodScan.remember(getApplication(), p) }
 
     // Plans from files (PDF / Excel / CSV)
     fun importPlan(uri: Uri, type: String = PlanType.TRAINING) = run("Reading your plan…") {
