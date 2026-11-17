@@ -107,6 +107,8 @@ class Repo private constructor(internal val ctx: Context) {
     }
 
     suspend fun deleteQuest(q: Quest) {
+        // Deleting a generated quest without doing it = "not for me": the AI avoids it next time
+        if (!q.done && q.source in setOf("ai", "system", "checkin")) prefs.skippedQuests = prefs.skippedQuests + q.title
         db.withTransaction {
             revoke("quest:${q.id}")
             loseGold("quest:${q.id}")
@@ -119,18 +121,70 @@ class Repo private constructor(internal val ctx: Context) {
         Widgets.refresh(ctx)
     }
 
-    private fun defaultQuests(day: Long) = listOf(
-        Quest(date = day, title = "Train according to plan", stat = Stat.STRENGTH, xp = 40, source = "system"),
-        Quest(date = day, title = "Walk 8,000 steps", stat = Stat.VITALITY, xp = 20, source = "system", autoType = "steps", target = 8000),
-        Quest(date = day, title = "Log every meal", stat = Stat.VITALITY, xp = 20, source = "system"),
-        Quest(date = day, title = "30 min focused learning", stat = Stat.INTELLECT, xp = 30, source = "system"),
-        Quest(date = day, title = "90 min deep-work block", stat = Stat.DISCIPLINE, xp = 30, source = "system"),
-        Quest(date = day, title = "Evening check-in", stat = Stat.SPIRIT, xp = 15, source = "system"),
-    )
+    /** Without an API key: a default set, still shaped by what the user told the app (steps, learning topic). */
+    private suspend fun defaultQuests(day: Long): List<Quest> {
+        val topic = life.skillsNow().firstOrNull { it.status == "learning" }?.title
+        val skipped = prefs.skippedQuests.map { it.lowercase() }.toSet()
+        return listOf(
+            Quest(date = day, title = prefs.sportList.firstOrNull()?.let { "Training: $it session (log it in Train)" } ?: "Train according to plan",
+                stat = Stat.STRENGTH, xp = 40, source = "system"),
+            Quest(date = day, title = "Walk 8,000 steps", stat = Stat.VITALITY, xp = 20, source = "system", autoType = "steps", target = 8000),
+            Quest(date = day, title = "Hit your protein goal (${prefs.proteinGoal} g)", stat = Stat.VITALITY, xp = 20, source = "system"),
+            if (topic != null) Quest(date = day, title = "Quiz: answer 10 questions on $topic", stat = Stat.INTELLECT, xp = 30,
+                source = "system", autoType = "cards", target = 10)
+            else Quest(date = day, title = "30 min focused learning", stat = Stat.INTELLECT, xp = 30, source = "system"),
+            Quest(date = day, title = "90 min deep-work block", stat = Stat.DISCIPLINE, xp = 30, source = "system"),
+            Quest(date = day, title = "Evening check-in", stat = Stat.SPIRIT, xp = 15, source = "system"),
+        ).filter { it.title.lowercase() !in skipped }
+    }
+
+    /** How the user actually deals with quests: the AI uses this to tailor difficulty and kind. */
+    private suspend fun questProfile(day: Long): String {
+        val past = game.questsSince(day - 14).filter { it.date < day }
+        val sb = StringBuilder("## How they handle quests (last 14 days)\n")
+        if (past.isEmpty()) sb.append("New user: no history yet. Start easy and varied.\n")
+        else {
+            val rate = past.count { it.done } * 100 / past.size
+            sb.append("Completion rate: $rate% (${past.count { it.done }}/${past.size}).\n")
+            sb.append("By stat: " + past.groupBy { it.stat }.entries.joinToString { (s, l) -> "${s.short} ${l.count { it.done }}/${l.size}" } + "\n")
+            val done = past.filter { it.done }.map { it.title }.distinct().takeLast(12)
+            if (done.isNotEmpty()) sb.append("Quests they DID (they like these):\n" + done.joinToString("\n") { "- $it" } + "\n")
+            val missed = past.filter { !it.done }.map { it.title }.distinct().takeLast(10)
+            if (missed.isNotEmpty()) sb.append("Quests they did NOT do:\n" + missed.joinToString("\n") { "- $it" } + "\n")
+        }
+        // What they actually use in the app: quests should lean on habits they have, not push features they ignore
+        val logs = life.logsSince(day - 13)
+        val sessions = logs.mapNotNull { Sports.sportOf(it) }
+        val foodDays = life.foodSince(day - 13).map { it.date }.toSet().size
+        val setDays = fit.setsSince(day - 13).map { it.date }.toSet().size
+        val checkIns = life.recentCheckIns(14).count { it.date >= day - 13 }
+        val quizDays = (0..13).count { prefs.cardsReviewed(day - it) > 0 }
+        sb.append("\n## What they actually use (last 14 days)\n")
+        sb.append("Food logged on $foodDays days · training sessions logged: ${sessions.size}" +
+            (if (sessions.isNotEmpty()) " (" + sessions.groupingBy { it }.eachCount().entries.joinToString { "${it.key} ${it.value}" } + ")" else "") +
+            " · days with sets logged: $setDays · check-ins: $checkIns · quiz days: $quizDays · journal entries: ${logs.size}\n")
+        sb.append("Use this: build on what they do regularly. For things they never use (e.g. food logging), at most one gentle quest " +
+            "a few times a week, not daily.\n")
+        prefs.skippedQuests.takeIf { it.isNotEmpty() }?.let {
+            sb.append("Quests they deleted (don't suggest these or close variants):\n" + it.takeLast(12).joinToString("\n") { t -> "- $t" } + "\n")
+        }
+        val topics = life.skillsNow().filter { it.status == "learning" }
+        if (topics.isNotEmpty()) {
+            sb.append("\n## What they're learning right now (Learn tab quiz)\n")
+            topics.forEach { t ->
+                val cards = db.grow().cardsForTopic(t.title)
+                sb.append("- ${t.title}${if (t.notes.isNotBlank()) " (${t.notes})" else ""}: ${cards.size} quiz questions, " +
+                    "${cards.count { it.due <= day }} due today\n")
+            }
+            sb.append("Quiz questions answered today: ${prefs.cardsReviewed(day)}\n")
+        }
+        if (prefs.questWishes.isNotBlank()) sb.append("\n## The user's own wishes for their quests (follow these)\n${prefs.questWishes}\n")
+        return sb.toString()
+    }
 
     /**
      * Builds today's quests. With an API key, Claude designs them from your plans,
-     * calendar and recent history. Without one, a sensible default set is used.
+     * calendar, recent history and how you've handled past quests. Without one, a default set is used.
      */
     suspend fun generateQuests(force: Boolean = false): String? {
         val day = today()
@@ -143,15 +197,25 @@ class Repo private constructor(internal val ctx: Context) {
             return null
         }
         return try {
-            val ctxText = buildContext()
+            val ctxText = buildContext() + "\n" + questProfile(day)
             val res = claude.askJson(
-                system = """You design the user's daily quests in a gamified self-improvement app.
+                system = """You design the user's daily quests in a gamified self-improvement app. The quests must fit THIS user, not a generic person.
 Stats: STRENGTH (training), VITALITY (nutrition, sleep, health), INTELLECT (learning), DISCIPLINE (work, focus, habits), SPIRIT (mood, reflection, relationships, rest).
+Personalise:
+- Follow "The user's own wishes" if present: they override the defaults below.
+- Use their goals, plans, job, learning topics and memories: name real things from their data (their exercises, their topic, their project), never generic filler.
+- Difficulty follows their completion rate: under 50% → 4 easier, shorter quests; 50–85% → keep the level; over 85% → make 1–2 a bit harder.
+- More of the kinds of quests they complete; fewer of those they skip; never the ones they deleted.
+- Write titles and details in the user's language (see "Language").
 Rules:
 - 4 to 7 quests for TODAY, concrete and checkable ("Push day: bench 4x8, OHP 3x10…", not "work out").
-- Follow today's training plan for this weekday exactly; on rest days give a recovery quest.
+- Training quests are in THEIR sports (## Training profile → Sports, "In their words"), never a sport they don't do.
+  Follow today's training plan / their weekly rhythm; spread their sports over the week; on rest days give a recovery quest.
+  If they log sessions by hand, phrase it so one logged session completes it (or use auto "workout" with minutes).
 - Include the nutrition target as a quest (e.g. hit protein goal).
-- Include one learning quest tied to the user's learning goals and one work/focus quest.
+- One learning quest: if they have learning topics, make it a quiz round on one of them ("Quiz: 10 questions on <topic>",
+  auto "cards", target 8–15, pick the topic with the most due questions). Otherwise tie it to their learning goals.
+- One work/focus quest.
 - Calendar entries are the user's appointments: fixed, never schedule over them; use the free windows between them and mention times when useful.
 - Adapt to what's already done today (steps so far, sets logged, food eaten): don't ask for what's already achieved.
 - Use yesterday's check-in to make one quest address what they wanted to improve.
@@ -161,7 +225,8 @@ Rules:
 - If they are saving towards rewards, include at most one money quest (no-spend day, move €X to savings, cook instead of ordering) — ideally on 2-3 days per week.
 - xp between 10 and 60 depending on effort.
 - Health data syncs automatically. When a quest is measurable, set "auto" so it completes itself:
-  "steps" (target = step count), "sleep" (target = minutes of sleep last night), "workout" (target = workout minutes). Otherwise "auto": "".
+  "steps" (target = step count), "sleep" (target = minutes of sleep last night), "workout" (target = workout minutes),
+  "cards" (target = quiz questions answered today). Otherwise "auto": "".
 Return: [{"title": "...", "detail": "short how/when", "stat": "STRENGTH", "xp": 40, "auto": "steps", "target": 8000}, ...]""",
                 user = ctxText,
             )
@@ -172,7 +237,7 @@ Return: [{"title": "...", "detail": "short how/when", "stat": "STRENGTH", "xp": 
             existing.filter { it.source == "system" && !it.done }.forEach { game.deleteQuest(it) }
             arr.mapNotNull { it as? JsonObject }.forEach { o ->
                 val title = str(o, "title") ?: return@forEach
-                val auto = str(o, "auto")?.lowercase()?.takeIf { it in setOf("steps", "sleep", "workout") }.orEmpty()
+                val auto = str(o, "auto")?.lowercase()?.takeIf { it in setOf("steps", "sleep", "workout", "cards") }.orEmpty()
                 game.insertQuest(
                     Quest(date = day, title = title, detail = str(o, "detail").orEmpty(),
                         stat = Stat.parse(str(o, "stat")), xp = int(o, "xp", 20).coerceIn(5, 100), source = "ai",
@@ -399,6 +464,12 @@ Return {"videos":[{"title":"...","channel":"...","why":"one short line","query":
             Claude.tool("save_memory", "Remember a lasting fact about the user (preferences, constraints, injuries, schedule, values).",
                 mapOf("text" to ("string" to "The fact, one sentence")),
                 listOf("text")),
+            Claude.tool("log_session", "Log a training session of any sport (run, ride, swim, football, gym session, yoga…).",
+                mapOf("sport" to ("string" to "The sport, ideally one of the user's sports"),
+                    "minutes" to ("integer" to "Duration in minutes"),
+                    "km" to ("number" to "Optional distance in km"),
+                    "note" to ("string" to "Optional short note (pace, how it felt)")),
+                listOf("sport", "minutes")),
             Claude.tool("log_set", "Log a strength training set (one call per set).",
                 mapOf("exercise" to ("string" to "Exercise name, e.g. Bench Press"),
                     "weight_kg" to ("number" to "Weight in kg (0 for bodyweight)"),
@@ -476,6 +547,12 @@ Return {"videos":[{"title":"...","channel":"...","why":"one short line","query":
             "save_memory" -> {
                 life.insertMemory(Memory(ts = now(), text = str(input, "text").orEmpty()))
                 "✓ Remembered"
+            }
+            "log_session" -> {
+                val sport = str(input, "sport") ?: "Training"
+                val min = int(input, "minutes").coerceIn(1, 600)
+                logSession(sport, min, str(input, "km")?.toFloatOrNull(), str(input, "note").orEmpty())
+                "✓ Logged ${Sports.label(sport, min, str(input, "km")?.toFloatOrNull(), "")}"
             }
             "log_set" -> {
                 val n = int(input, "sets", 1).coerceIn(1, 10)
@@ -602,6 +679,7 @@ ${buildContext()}"""
         val dow = today.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH)
         sb.append("## Now\n$dow, ${today.format(DateTimeFormatter.ISO_DATE)}, ")
             .append(LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))).append("\n")
+        sb.append("Language: ${Locale.getDefault().getDisplayLanguage(Locale.ENGLISH)} (phone setting; if they write to you in another language, use theirs)\n")
         if (prefs.name.isNotBlank()) sb.append("Name: ${prefs.name}\n")
 
         val totals = Leveling.totals(game.statTotalsNow())
@@ -614,6 +692,8 @@ ${buildContext()}"""
             "${prefs.carbsGoal}g carbs, ${prefs.fatGoal}g fat per day (body goal: ${prefs.bodyGoal})\n")
 
         sb.append("\n## Training profile\n")
+        sb.append("Sports: ${prefs.sportList.joinToString().ifBlank { "not set yet" }}\n")
+        if (prefs.sportNotes.isNotBlank()) sb.append("In their words: ${prefs.sportNotes}\n")
         sb.append("Level: ${Prefs.Levels.trainingLevels.getOrNull(prefs.trainingLevel)?.let { "${it.first} (${it.second})" } ?: "unknown"}\n")
         if (prefs.equipment.isNotBlank()) sb.append("Equipment available: ${prefs.equipment}\n")
         if (prefs.heightCm > 0) sb.append("Body: ${prefs.heightCm} cm, ${prefs.age} y, ${if (prefs.sex == "f") "female" else "male"}\n")

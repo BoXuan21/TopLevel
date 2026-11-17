@@ -201,7 +201,8 @@ internal fun QuestRow(q: Quest, onToggle: () -> Unit, onDelete: () -> Unit) {
             if (q.detail.isNotBlank()) Text(q.detail, color = C.muted, fontSize = 12.sp)
             if (q.autoType.isNotEmpty() && q.target > 0) Text(
                 "⟳ auto · " + when (q.autoType) {
-                    "steps" -> "${q.target} steps"; "sleep" -> "${q.target / 60}h${q.target % 60} sleep"; else -> "${q.target} min workout"
+                    "steps" -> "${q.target} steps"; "sleep" -> "${q.target / 60}h${q.target % 60} sleep"
+                    "cards" -> "${q.target} quiz questions"; else -> "${q.target} min workout"
                 }, color = C.accent, fontSize = 11.sp, fontFamily = Fonts.tech)
         }
         Spacer(Modifier.width(8.dp))

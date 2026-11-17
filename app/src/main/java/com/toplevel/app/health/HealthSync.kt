@@ -110,7 +110,7 @@ object HealthSync {
             val reached = when (q.autoType) {
                 "steps" -> steps >= q.target
                 "sleep" -> sleepMin >= q.target
-                "workout" -> workoutMin >= q.target
+                "workout" -> maxOf(workoutMin, repo.prefs.sportMin(day).toLong()) >= q.target // watch or logged by hand
                 else -> false
             }
             if (reached && q.target > 0) repo.completeQuest(q.id)

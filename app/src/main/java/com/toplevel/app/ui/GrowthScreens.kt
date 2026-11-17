@@ -333,8 +333,9 @@ fun CardsPage(vm: AppViewModel) {
         }
         item {
             if (card == null) Panel(title = "All clear", color = C.good) {
-                Text(if (total == 0) "No cards yet. Log what you learn in the Journal (category \"Learned\") and the System turns it into cards."
-                    else "Nothing due. Come back tomorrow morning: 2 minutes keeps it in your head.", color = C.text, fontSize = 15.sp)
+                Text(if (total == 0) "No cards yet. Log what you learn in the Journal (category \"Learned\") and the System turns it into cards. " +
+                    "For an AI quiz on a whole topic, use the Learn tab."
+                    else "Nothing due. Due cards also show up in the Learn tab quiz.", color = C.text, fontSize = 15.sp)
             } else Panel(Modifier.tap { flipped = !flipped }, title = if (flipped) "Answer" else "Question", color = C.stat(Stat.INTELLECT)) {
                 Text(card.front, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, lineHeight = 26.sp)
                 Spacer(Modifier.height(12.dp))
@@ -607,7 +608,7 @@ fun ExtrasPanel(vm: AppViewModel, open: (String) -> Unit) {
             val left = countdown(a.end)
             ExtraRow("⛩", a.d.name, if (left > 0) "${fmtLeft(left)} left" else "Time's up: claim your clear", C.bad) { open("dungeons") }
         }
-        if (due.isNotEmpty()) ExtraRow("✎", "${due.size} flashcards due", "2-minute review", C.stat(Stat.INTELLECT)) { open("cards") }
+        if (due.isNotEmpty()) ExtraRow("✦", "${due.size} quiz questions due", "Learn tab · a few minutes", C.stat(Stat.INTELLECT)) { open("quiz") }
         if (free > 0) ExtraRow("▲", "$free stat points to spend", "Choose how you grow", C.warn) { open("status") }
         if (job != null) {
             val p = vm.jobProgress

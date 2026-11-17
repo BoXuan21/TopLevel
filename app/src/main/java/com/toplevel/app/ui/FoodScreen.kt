@@ -81,6 +81,7 @@ fun FoodScreen(vm: AppViewModel) {
     var pending by rememberSaveable { mutableStateOf<String?>(null) }
     var mode by rememberSaveable { mutableStateOf("meal") }
     var atHome by rememberSaveable { mutableStateOf("") }
+    var askHome by rememberSaveable { mutableStateOf(false) }
     val hasKey = vm.prefs.hasKey
 
     fun newPhotoUri(): Uri {
@@ -132,6 +133,16 @@ fun FoodScreen(vm: AppViewModel) {
                 Spacer(Modifier.height(4.dp))
                 if (left > 0) Text("$left g protein to go", color = C.muted, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 else SystemNotice("Protein goal reached. +20 VIT")
+                // Water, compact
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("WATER  ${vm.water}/${vm.prefs.waterGoal}", color = C.accent, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp, modifier = Modifier.weight(1f))
+                    GhostButton("−", color = C.muted) { vm.addWater(-1) }
+                    GhostButton("+1 glass") { vm.addWater(1) }
+                }
+                Spacer(Modifier.height(6.dp))
+                Bar(vm.water.toFloat() / vm.prefs.waterGoal.coerceAtLeast(1), C.accent, height = 4)
             }
         }
 
@@ -156,11 +167,7 @@ fun FoodScreen(vm: AppViewModel) {
                 if (hits.query.isNotEmpty() && hits.query == text.trim()) {
                     Spacer(Modifier.height(8.dp))
                     SearchResults(vm, hits, hasKey) { text = "" }
-                } else Text(
-                    if (hasKey) "Type a product or dish to find it, or describe a whole meal and let the AI estimate it."
-                    else "Type a product or dish to find it. Add your API key in Settings for AI estimates.",
-                    color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp),
-                )
+                }
                 Spacer(Modifier.height(10.dp))
                 if (manual || !hasKey) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -210,70 +217,9 @@ fun FoodScreen(vm: AppViewModel) {
             }
         }
 
-        // Water
-        item {
-            Panel(title = "Water", color = C.accent) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        repeat(vm.prefs.waterGoal) { i ->
-                            val on = i < vm.water
-                            Box(
-                                Modifier.weight(1f).height(26.dp)
-                                    .glow(if (on) C.accent else C.border, SmallShape, radius = if (on) 6.dp else 0.dp, strength = 0.6f)
-                                    .clip(SmallShape)
-                                    .background(if (on) Brush.verticalGradient(listOf(C.accentSoft, C.glow)) else Brush.verticalGradient(listOf(C.bg, C.bg)))
-                            )
-                        }
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Text("${vm.water}/${vm.prefs.waterGoal}", color = C.text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                }
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GhostButton("+1 glass", Modifier.weight(1f)) { vm.addWater(1) }
-                    GhostButton("−1", color = C.muted) { vm.addWater(-1) }
-                }
-            }
-        }
-
-        // What to eat next
-        item {
-            val inf = rememberInfiniteTransition(label = "fa")
-            val pulse by inf.animateFloat(0.4f, 1f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "p")
-            Panel(
-                title = "What should I eat next?",
-                color = C.stat(Stat.VITALITY),
-                action = {
-                    if (hasKey && vm.foodAdvice.isNotBlank()) IconButton(onClick = { vm.askWhatToEat() }, enabled = !vm.foodAdviceBusy,
-                        modifier = Modifier.size(34.dp)) { Icon(Icons.Filled.Refresh, "Ask again", tint = C.accent) }
-                },
-            ) {
-                when {
-                    !hasKey -> Text("Add your API key in Settings and your coach will plan your next meal from what you've eaten.",
-                        color = C.muted, fontSize = 15.sp)
-                    vm.foodAdviceBusy -> Text("▍ Checking your macros and plan…", color = C.accent, fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold, modifier = Modifier.alpha(pulse))
-                    else -> {
-                        if (vm.foodAdvice.isBlank()) Text(
-                            "Your coach looks at your targets, what you've eaten, the time and today's training, then suggests what to eat.",
-                            color = C.muted, fontSize = 15.sp)
-                        else AdviceText(vm.foodAdvice)
-                        Spacer(Modifier.height(10.dp))
-                        Field(atHome, { atHome = it }, "What do you have at home? (optional)",
-                            placeholder = "e.g. eggs, rice, skyr, frozen veg, tuna", voice = true)
-                        Spacer(Modifier.height(8.dp))
-                        PrimaryButton(if (atHome.isBlank()) "Ask the system" else "Plan from what I have", Modifier.fillMaxWidth()) {
-                            vm.askWhatToEat(atHome.trim())
-                        }
-                    }
-                }
-            }
-        }
-
         // Meals list
-        item {
+        if (food.isNotEmpty()) item {
             Panel(title = "Meals today · ${food.size}") {
-                if (food.isEmpty()) Text("Nothing logged yet.", color = C.muted, fontSize = 15.sp)
                 val fmt = DateTimeFormatter.ofPattern("HH:mm")
                 food.reversed().forEach { f ->
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 3.dp)) {
@@ -289,9 +235,39 @@ fun FoodScreen(vm: AppViewModel) {
                         }
                     }
                 }
-                if (hasKey) {
-                    Spacer(Modifier.height(10.dp))
-                    GhostButton("Adjust my targets (AI)", enabled = vm.busy == null) { vm.suggestMacros() }
+            }
+        }
+
+        // What to eat next: one button until you ask
+        if (hasKey) item {
+            val inf = rememberInfiniteTransition(label = "fa")
+            val pulse by inf.animateFloat(0.4f, 1f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "p")
+            when {
+                vm.foodAdviceBusy -> Text("▍ Checking your macros and plan…", color = C.accent, fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.alpha(pulse))
+                vm.foodAdvice.isBlank() && !askHome -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GhostButton("What should I eat next?", Modifier.weight(1f), color = C.stat(Stat.VITALITY)) { vm.askWhatToEat() }
+                    GhostButton("From what I have", color = C.muted) { askHome = true }
+                }
+                else -> Panel(
+                    title = "What to eat next",
+                    color = C.stat(Stat.VITALITY),
+                    action = {
+                        IconButton(onClick = { vm.askWhatToEat(atHome.trim()) }, modifier = Modifier.size(34.dp)) {
+                            Icon(Icons.Filled.Refresh, "Ask again", tint = C.accent)
+                        }
+                    },
+                ) {
+                    if (vm.foodAdvice.isNotBlank()) AdviceText(vm.foodAdvice)
+                    if (askHome) {
+                        Spacer(Modifier.height(10.dp))
+                        Field(atHome, { atHome = it }, "What do you have at home?",
+                            placeholder = "e.g. eggs, rice, skyr, frozen veg, tuna", voice = true)
+                        Spacer(Modifier.height(8.dp))
+                        PrimaryButton("Plan from what I have", Modifier.fillMaxWidth(), enabled = atHome.isNotBlank()) {
+                            vm.askWhatToEat(atHome.trim()); askHome = false
+                        }
+                    } else TextButton(onClick = { askHome = true }) { Text("Plan from what I have at home", color = C.accent) }
                 }
             }
         }

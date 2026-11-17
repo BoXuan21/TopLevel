@@ -310,6 +310,8 @@ data class Flashcard(
     val createdAt: Long,
     /** LogEntry id it was made from (0 = manual) */
     val sourceLog: Long = 0,
+    /** What you're learning that this card quizzes (a learning topic), "" = from the journal / manual */
+    @androidx.room.ColumnInfo(defaultValue = "") val topic: String = "",
 )
 
 /** Money spent (positive €). */

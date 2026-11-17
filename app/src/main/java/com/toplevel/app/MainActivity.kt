@@ -164,7 +164,7 @@ private val tabs = listOf(
     Tab("Home", "◆"),
     Tab("Food", "◈"),
     Tab("Train", "⚔"),
-    Tab("Journal", "▤"),
+    Tab("Learn", "✦"),
     Tab("Coach", "◎"),
 )
 private const val HOME = 0

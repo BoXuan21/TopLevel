@@ -52,6 +52,16 @@ class Prefs(ctx: Context) {
         get() = sp.getLong("last_discover_gen", -1)
         set(v) = sp.edit().putLong("last_discover_gen", v).apply()
 
+    /** What kind of quests the user wants (free text, set when regenerating quests). */
+    var questWishes: String
+        get() = sp.getString("quest_wishes", "") ?: ""
+        set(v) = sp.edit().putString("quest_wishes", v.trim().take(500)).apply()
+
+    /** Titles of generated quests the user deleted without doing them (newest last), so the AI stops suggesting them. */
+    var skippedQuests: List<String>
+        get() = (sp.getString("skipped_quests", "") ?: "").split("\n").filter { it.isNotBlank() }
+        set(v) = sp.edit().putString("skipped_quests", v.takeLast(20).joinToString("\n") { it.replace("\n", " ") }).apply()
+
     var lastSeenLevel: Int
         get() = sp.getInt("last_seen_level", 1)
         set(v) = sp.edit().putInt("last_seen_level", v).apply()
@@ -93,6 +103,7 @@ class Prefs(ctx: Context) {
         "training_level" to trainingLevel.toString(), "equipment" to equipment, "calendar_write" to calendarWrite.toString(),
         "job_json" to jobJson, "jobs_done" to jobsDone, "theme" to theme, "dungeons_cleared" to dungeonsCleared.toString(),
         "budgets" to budgets, "month_budget" to monthBudget.toString(),
+        "sports" to sports, "sport_notes" to sportNotes, "quest_wishes" to questWishes,
     ) + Stat.entries.associate { "pts_${it.name}" to points(it).toString() }
 
     fun importMap(m: Map<String, String>) {
@@ -124,6 +135,9 @@ class Prefs(ctx: Context) {
         m["dungeons_cleared"]?.toIntOrNull()?.let { dungeonsCleared = it }
         m["budgets"]?.let { budgets = it }
         m["month_budget"]?.toIntOrNull()?.let { monthBudget = it }
+        m["sports"]?.let { sports = it }
+        m["sport_notes"]?.let { sportNotes = it }
+        m["quest_wishes"]?.let { questWishes = it }
         Stat.entries.forEach { s -> m["pts_${s.name}"]?.toIntOrNull()?.let { setPoints(s, it) } }
     }
 
@@ -190,6 +204,20 @@ class Prefs(ctx: Context) {
     var trainingLevel: Int
         get() = sp.getInt("training_level", -1)
         set(v) = sp.edit().putInt("training_level", v).apply()
+    /** The user's sports (names from [Sports.all] or their own), comma-separated. Older installs: calisthenics. */
+    var sports: String
+        get() = sp.getString("sports", null) ?: if (wizardDone && trackedLadders.isNotBlank()) "Calisthenics" else ""
+        set(v) = sp.edit().putString("sports", v).apply()
+    val sportList: List<String> get() = sports.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    /** In their own words: how often, what exactly, goals ("Running 3x/week, half marathon in May"). */
+    var sportNotes: String
+        get() = sp.getString("sport_notes", "") ?: ""
+        set(v) = sp.edit().putString("sport_notes", v.trim()).apply()
+
+    /** Training minutes logged by hand per day (sessions without a watch). */
+    fun sportMin(day: Long): Int = sp.getInt("sportmin_$day", 0)
+    fun addSportMin(day: Long, min: Int) = sp.edit().putInt("sportmin_$day", sportMin(day) + min).apply()
+
     /** Equipment the user has, comma-separated. */
     var equipment: String
         get() = sp.getString("equipment", "") ?: ""

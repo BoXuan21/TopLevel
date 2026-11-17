@@ -1,4 +1,5 @@
-package com.toplevel.app
+﻿package com.toplevel.app
+
 
 import android.graphics.Bitmap
 import android.os.SystemClock
@@ -89,6 +90,8 @@ class AppFlowTest {
         p.useCalendar = false
         p.kcalGoal = 2600; p.proteinGoal = 160; p.carbsGoal = 300; p.fatGoal = 80
         p.trackedLadders = "planche,frontlever"
+        p.sports = "Calisthenics,Running"
+        p.questWishes = ""
         p.activeTitle = "Straddle Sovereign"
         p.savingsGoal = 200
         p.coachSessions = false
@@ -188,7 +191,8 @@ class AppFlowTest {
 
     private fun tab(label: String) {
         dismissPopups()
-        compose.onAllNodes(hasContentDescription(label)).onFirst().performClick(); settle()
+        // A closing auto pop-up can swallow the first tap; tapping the same tab twice is harmless
+        repeat(2) { compose.onAllNodes(hasContentDescription(label)).onFirst().performClick(); settle() }
     }
 
     /** Opens a page from the menu (☰ on Home). */
@@ -258,21 +262,30 @@ class AppFlowTest {
         tab("Train")
         shot("train")
         // Log a new PR hold on the current planche stage
-        compose.onAllNodesWithText("LOG HOLD").onFirst().performClick(); settle()
+        compose.onAllNodesWithText("LOG HOLD").onFirst().performScrollTo().performClick(); settle()
         compose.onAllNodes(hasSetTextAction() and hasAnyAncestor(isDialog())).onFirst().performTextInput("11")
         shot("train_log_hold_dialog")
         compose.onNode(hasText("Log") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
         waitFor("planche PR 11s") { (repo.db.vault().progressOf("planche")?.bestHoldSec ?: 0) >= 11 }
         settle(); dismissPopups(); shot("train_after_pr")
+        // Any sport: log a 45 min run
+        compose.onNodeWithText("🏃 Running").performScrollTo().performClick(); settle()
+        compose.onNodeWithText("LOG 45 MIN RUNNING").performClick()
+        waitFor("run logged") { repo.life.logsSince(day).any { it.text.startsWith("Running · 45 min") } }
+        assertTrue(repo.prefs.sportMin(day) >= 45)
+        settle(); dismissPopups(); shot("train_session_logged")
+        scrollTo("▼ Stats & coach session")
+        compose.onNodeWithText("▼ Stats & coach session").performClick(); settle()
         scroll(2); shot("train_volume")
         scroll(2); shot("train_progress_chart")
 
-        // JOURNAL tab
-        tab("Journal"); shot("journal")
-        compose.onNodeWithText("Skill tree").performClick(); settle(); shot("skills")
+        // LEARN tab: quiz + journal
+        tab("Learn"); shot("learn_quiz")
+        compose.onNodeWithText("Journal").performClick(); settle(); shot("journal")
 
         // MENU pages
         tab("Home"); compose.onNodeWithText("MENU").performClick(); settle(); shot("menu")
+        more("Skill tree"); shot("skills")
         more("Status"); shot("status")
         scroll(2); shot("status_boss_discovery")
         more("Body"); shot("body")
@@ -310,6 +323,8 @@ class AppFlowTest {
 
     @Test fun setupWizard() {
         repo.prefs.wizardDone = false
+        // Fresh answers (prefs survive between test runs)
+        repo.prefs.sports = ""; repo.prefs.sportNotes = ""; repo.prefs.trainingLevel = -1; repo.prefs.equipment = ""
         scenario.close()
         scenario = ActivityScenario.launch(MainActivity::class.java); settle(2000)
         compose.onNodeWithText("ACCEPT").performClick(); settle()
@@ -326,12 +341,15 @@ class AppFlowTest {
         compose.onNodeWithText("NEXT").performClick(); settle()
         assertTrue(runBlocking { repo.life.plansNow() }.any { it.type == PlanType.WORK && "SRE" in it.content })
         assertTrue(runBlocking { repo.life.plansNow() }.any { it.type == PlanType.LEARNING && "CKA" in it.content })
-        // Level: advanced, has parallettes
-        compose.onNodeWithText("◇ Advanced · 3+ years, working on hard skills").performClick()
-        compose.onNodeWithText("◇ Parallettes").performClick(); settle()
+        // Sport: running + calisthenics, advanced, has parallettes
+        compose.onNodeWithText("◇ 🏃 Running").performClick()
+        compose.onNodeWithText("◇ 🤸 Calisthenics").performClick(); settle()
+        compose.onNodeWithText("◇ Advanced · 3+ years, working on hard skills").performScrollTo().performClick()
+        compose.onNodeWithText("◇ Parallettes").performScrollTo().performClick(); settle()
         shot("wizard_level")
         compose.onNodeWithText("NEXT").performClick(); settle()
         assertEquals(2, repo.prefs.trainingLevel)
+        assertEquals(listOf("Running", "Calisthenics"), repo.prefs.sportList)
         assertTrue("Parallettes" in repo.prefs.equipment)
         val fields = compose.onAllNodes(hasSetTextAction())
         fields[0].performTextInput("30"); fields[1].performTextInput("180"); fields[2].performTextInput("80")
@@ -355,9 +373,11 @@ class AppFlowTest {
 
     @Test fun rewardRedemptionAndSavings() {
         dismissPopups()
-        more("VAULT")
+        more("Vault")
         // Rings: enough gold (1240 ≥ 150), pot 340 ≥ 45, cool-down passed → claimable
         scrollTo("CLAIM REWARD ✦")
+        // The fake test key makes background AI calls fail; wait until that snackbar stops covering the button
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Claude API", substring = true).fetchSemanticsNodes().isEmpty() }
         compose.onAllNodesWithText("CLAIM REWARD ✦").onFirst().performClick()
         waitFor("rings redeemed") { repo.db.vault().rewardsNow().any { it.name.startsWith("Wooden") && it.redeemedAt != null } }
         settle(); shot("vault_reward_claimed")

@@ -93,16 +93,20 @@ class Claude(private val prefs: Prefs) {
         sendJson(system, buildJsonArray { add(userMsg(user)) }, maxTokens, small)
 
     /**
-     * Structured answer. Claude is forced to call the `answer` tool, so the API hands back
-     * parsed JSON instead of free text. If the answer was cut off (token limit) or unreadable,
-     * retry with a bigger budget before giving up.
+     * Structured answer. Claude is asked to call the `answer` tool, so the API hands back
+     * parsed JSON instead of free text (with a JSON-in-text fallback). If the answer was cut off
+     * (token limit) or unreadable, retry with a bigger budget before giving up.
+     *
+     * The tool is NOT forced: current models (Sonnet 5.5, Opus 5.5, …) reject
+     * tool_choice "tool"/"any" with HTTP 400, so we use "auto" and steer from the prompt.
      */
     suspend fun sendJson(system: String, messages: JsonArray, maxTokens: Int = 2000, small: Boolean = false): JsonElement {
         var budget = maxOf(maxTokens, MIN_JSON_TOKENS)
         repeat(3) {
             val res = send(
-                "$system\n\nGive your answer by calling the `answer` tool, with the JSON in `data`.",
-                messages, JsonArray(listOf(ANSWER_TOOL)), budget, small, toolChoice = FORCE_ANSWER,
+                "$system\n\nAlways answer by calling the `answer` tool exactly once, with the complete JSON in `data`. " +
+                    "Don't write anything else.",
+                messages, JsonArray(listOf(ANSWER_TOOL)), budget, small, toolChoice = ANSWER_CHOICE,
             )
             parseAnswer(res)?.let { return it }
             if (str(res, "stop_reason") == "max_tokens") budget = (budget * 2).coerceAtMost(8000)
@@ -116,8 +120,8 @@ class Claude(private val prefs: Prefs) {
         /** Fast, cheap model for small structured jobs. */
         const val SMALL_MODEL = "claude-haiku-5-5"
 
-        /** Tight budgets were the main cause of cut-off (= invalid) JSON. */
-        const val MIN_JSON_TOKENS = 800
+        /** Tight budgets were the main cause of cut-off (= invalid) JSON. Thinking also uses this budget. */
+        const val MIN_JSON_TOKENS = 1500
 
         private val lenient = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -133,7 +137,8 @@ class Claude(private val prefs: Prefs) {
             })
         }
 
-        val FORCE_ANSWER = buildJsonObject { put("type", "tool"); put("name", "answer") }
+        /** "auto" works on every model; forced choices ("tool"/"any") are a 400 on current models. */
+        val ANSWER_CHOICE = buildJsonObject { put("type", "auto"); put("disable_parallel_tool_use", true) }
 
         /** Pull the JSON answer out of a response: the `answer` tool input first, then any JSON in the text. */
         fun parseAnswer(res: JsonObject): JsonElement? {

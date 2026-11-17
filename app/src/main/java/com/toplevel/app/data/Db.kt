@@ -376,6 +376,9 @@ interface GrowDao {
     @Query("SELECT * FROM flashcards WHERE due <= :day ORDER BY due ASC, id ASC") fun dueCards(day: Long): Flow<List<Flashcard>>
     @Query("SELECT * FROM flashcards WHERE due <= :day ORDER BY due ASC, id ASC") suspend fun dueCardsNow(day: Long): List<Flashcard>
     @Query("SELECT COUNT(*) FROM flashcards") fun cardCount(): Flow<Int>
+    @Query("SELECT * FROM flashcards WHERE topic = :topic ORDER BY id ASC") suspend fun cardsForTopic(topic: String): List<Flashcard>
+    @Query("UPDATE flashcards SET topic = :to WHERE topic = :from") suspend fun renameTopic(from: String, to: String)
+    @Query("DELETE FROM flashcards WHERE topic = :topic") suspend fun deleteTopicCards(topic: String)
     @Query("SELECT * FROM flashcards ORDER BY createdAt DESC") fun allCards(): Flow<List<Flashcard>>
     @Query("SELECT COALESCE(MAX(sourceLog), 0) FROM flashcards") suspend fun lastCardSource(): Long
     @Insert suspend fun insertCards(c: List<Flashcard>)
@@ -404,10 +407,10 @@ interface GrowDao {
         WorkoutSet::class, HealthDay::class, BodyEntry::class, WeeklyBoss::class, AchievementUnlock::class,
         SkillProgress::class, SessionItem::class, GoldEvent::class, Reward::class, SavingsEntry::class,
         Flashcard::class, Expense::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
-    // v2 only adds tables: Room migrates automatically and keeps all existing data
-    autoMigrations = [androidx.room.AutoMigration(from = 1, to = 2)],
+    // v2 only adds tables, v3 adds flashcards.topic: Room migrates automatically and keeps all existing data
+    autoMigrations = [androidx.room.AutoMigration(from = 1, to = 2), androidx.room.AutoMigration(from = 2, to = 3)],
 )
 abstract class AppDb : RoomDatabase() {
     abstract fun game(): GameDao

@@ -39,6 +39,11 @@ private val groups = listOf(
         Entry("body", "◍", "Body", "Weight and trend", C.stat(Stat.VITALITY)),
         Entry("review", "▦", "Weekly review", "Your week + top 3 changes", C.stat(Stat.INTELLECT)),
     ),
+    "LEARN" to listOf(
+        Entry("skills", "✦", "Skill tree", "Things to learn, learning, learned", C.stat(Stat.INTELLECT)),
+        Entry("discover", "▶", "Discover", "Daily videos, tools and songs", C.stat(Stat.INTELLECT)),
+        Entry("mycards", "✎", "Own flashcards", "Write cards yourself, cards from your journal", C.stat(Stat.INTELLECT)),
+    ),
     "CHALLENGES" to listOf(
         Entry("job", "♛", "Job change", "Questlines for a new class", C.shadow),
         Entry("dungeons", "⛩", "Dungeons", "Timed challenges", C.bad),
@@ -74,6 +79,9 @@ fun MoreScreen(vm: AppViewModel, actions: Actions, page: String, open: (String) 
                 "job" -> JobPage(vm)
                 "dungeons" -> DungeonPage(vm)
                 "money" -> MoneyPage(vm)
+                "skills" -> SkillsPage(vm)
+                "discover" -> DiscoverPage(vm)
+                "mycards" -> CardsPage(vm)
                 else -> SetupScreen(vm, actions.requestPerms, actions.connectHealth, actions.backup, actions.restore)
             }
         }

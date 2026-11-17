@@ -324,6 +324,98 @@ suspend fun Repo.generateCards(force: Boolean = false): Int {
 suspend fun Repo.addCard(front: String, back: String) =
     db.grow().insertCards(listOf(Flashcard(front = front, back = back, due = today(), createdAt = System.currentTimeMillis())))
 
+// ───────────────────────── Learn: topics + AI quiz ─────────────────────────
+
+/** What the user is learning right now = skill-tree items with status "learning". */
+suspend fun Repo.learnTopics(): List<SkillItem> = life.skillsNow().filter { it.status == "learning" }
+
+/** Add something you're learning. [level] is free text: your level, goal or exam date. */
+suspend fun Repo.addLearnTopic(title: String, level: String) {
+    val t = title.trim()
+    val existing = life.skillsNow().firstOrNull { it.title.equals(t, true) }
+    if (existing != null) life.updateSkill(existing.copy(status = "learning", notes = level.ifBlank { existing.notes }, learnedAt = null))
+    else life.insertSkill(SkillItem(title = t, status = "learning", notes = level.trim(), createdAt = System.currentTimeMillis()))
+}
+
+/** Stop learning a topic (its cards stay, so you keep reviewing what you know). */
+suspend fun Repo.removeLearnTopic(s: SkillItem) = life.updateSkill(s.copy(status = "todo"))
+
+/** Quiz stats per topic, used to adapt the next questions to how the user is doing. */
+data class TopicStats(val cards: Int, val due: Int, val weak: List<String>, val strong: Int)
+
+suspend fun Repo.topicStats(topic: String): TopicStats {
+    val cards = db.grow().cardsForTopic(topic)
+    val day = today()
+    return TopicStats(
+        cards = cards.size,
+        due = cards.count { it.due <= day },
+        // reviewed but failed recently / hard for them
+        weak = cards.filter { it.reps == 0 && it.ease < 2.5f || it.ease < 2.2f }.map { it.front },
+        strong = cards.count { it.reps >= 2 && it.ease >= 2.5f },
+    )
+}
+
+/**
+ * AI: write [n] new quiz questions for a topic, adapted to the user: their level/goal, their learning plan,
+ * what they already got asked (no repeats), and where they struggle (go deeper there).
+ */
+suspend fun Repo.generateQuiz(topic: SkillItem, n: Int = 8): Int {
+    val existing = db.grow().cardsForTopic(topic.title)
+    val st = topicStats(topic.title)
+    val plan = life.plansNow().firstOrNull { it.type == PlanType.LEARNING }?.content?.take(1200).orEmpty()
+    val o = claude.askJson(
+        system = """You are a tutor quizzing the user on what they are learning right now. Write $n new quiz questions on the topic.
+- Fit their level and goal. Test understanding and use (why, how, what happens if, which command/word/formula), not trivia.
+- Mix: mostly short-answer questions, a few small "apply it" scenarios. One idea per question.
+- If they struggle with some questions, ask about those ideas again from a different angle and fill the gaps behind them.
+- If they know most answers, make it harder; if they're new (few or no cards), start with the foundations.
+- Never repeat or rephrase a question they already have.
+- Question max 140 chars, answer max 240 chars (the key point first, then a short why). Write in the language of the topic/level text
+  (if unclear, use the language of their learning plan).
+Return {"cards": [{"q": "...", "a": "..."}]}""",
+        user = buildString {
+            append("Topic: ${topic.title}\n")
+            if (topic.notes.isNotBlank()) append("Their level / goal: ${topic.notes}\n")
+            if (plan.isNotBlank()) append("Their learning plan:\n$plan\n")
+            append("\nProgress: ${st.cards} questions so far, ${st.strong} well known.\n")
+            if (st.weak.isNotEmpty()) append("They struggle with:\n" + st.weak.takeLast(10).joinToString("\n") { "- $it" } + "\n")
+            if (existing.isNotEmpty()) append("Already asked (don't repeat):\n" + existing.takeLast(60).joinToString("\n") { "- ${it.front}" })
+        },
+        maxTokens = 2000, small = true,
+    ) as? JsonObject ?: throw IllegalStateException("Couldn't make questions. Try again.")
+    val now = System.currentTimeMillis()
+    val day = today()
+    val seen = existing.map { it.front.lowercase().trim() }.toMutableSet()
+    val cards = (o["cards"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }.mapNotNull { c ->
+        val q = (str(c, "q") ?: str(c, "front"))?.trim() ?: return@mapNotNull null
+        val a = (str(c, "a") ?: str(c, "back"))?.trim() ?: return@mapNotNull null
+        if (!seen.add(q.lowercase())) return@mapNotNull null
+        Flashcard(front = q, back = a, due = day, createdAt = now, topic = topic.title)
+    }
+    if (cards.isNotEmpty()) db.grow().insertCards(cards)
+    return cards.size
+}
+
+data class QuizResult(val grade: Int, val feedback: String)
+
+/**
+ * AI checks the user's own answer against the reference answer (small, cheap call),
+ * then schedules the card like a normal review.
+ */
+suspend fun Repo.checkAnswer(c: Flashcard, answer: String): QuizResult {
+    val o = claude.askJson(
+        system = "You check a learner's answer to a quiz question. Be fair: meaning counts, not wording; typos don't matter. " +
+            "grade: 0 = wrong or missing the key idea, 1 = partly right, 2 = right, 3 = right and complete/precise. " +
+            "feedback: max 2 short sentences, in the language of the question: say what was right, then fix or add what was missing. " +
+            "Return {\"grade\": 0-3, \"feedback\": \"...\"}",
+        user = "Question: ${c.front}\nReference answer: ${c.back}\nTheir answer: ${answer.take(600)}",
+        maxTokens = 400, small = true,
+    ) as? JsonObject ?: throw IllegalStateException("Couldn't check that answer")
+    val grade = (str(o, "grade")?.toDoubleOrNull()?.toInt() ?: 0).coerceIn(0, 3)
+    reviewCard(c, grade)
+    return QuizResult(grade, str(o, "feedback").orEmpty())
+}
+
 /** Grade a card; +2 INT per review, max 20 per day. */
 suspend fun Repo.reviewCard(c: Flashcard, grade: Int) {
     val day = today()
@@ -331,6 +423,8 @@ suspend fun Repo.reviewCard(c: Flashcard, grade: Int) {
     val n = prefs.cardsReviewed(day) + 1
     prefs.setCardsReviewed(day, n)
     award(Stat.INTELLECT, minOf(20, n * 2), "cards:$day")
+    // Quiz quests ("answer 10 quiz questions") complete themselves
+    game.questsForNow(day).filter { !it.done && it.autoType == "cards" && it.target in 1..n }.forEach { completeQuest(it.id) }
 }
 
 // ───────────────────────── Spending ─────────────────────────

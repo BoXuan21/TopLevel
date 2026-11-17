@@ -1,27 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Upward chevrons inside a diamond: "level up" -->
+<!-- Two crossed daggers with a soft glow (original design). Each dagger is drawn pointing up, then rotated. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:strokeColor="#FF3FA9FF"
-        android:strokeWidth="3"
-        android:fillColor="#00000000"
-        android:pathData="M54,26 L82,54 L54,82 L26,54 Z" />
-    <path
-        android:strokeColor="#FF9BD8FF"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:fillColor="#00000000"
-        android:pathData="M42,58 L54,46 L66,58" />
-    <path
-        android:strokeColor="#FF3FA9FF"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:fillColor="#00000000"
-        android:pathData="M42,68 L54,56 L66,68" />
+
+    <!-- Dagger 1: tip to the top right, violet -->
+    <group android:pivotX="54" android:pivotY="54" android:rotation="38">
+        <!-- glow -->
+        <path android:strokeColor="#448B5CFF" android:strokeWidth="6" android:strokeLineJoin="round" android:fillColor="#00000000"
+            android:pathData="M54,22 L58.5,33 L58,60 L50,60 L49.5,33 Z" />
+        <!-- blade -->
+        <path android:fillColor="#FFD9CCFF" android:strokeColor="#FF8B5CFF" android:strokeWidth="1.4" android:strokeLineJoin="round"
+            android:pathData="M54,22 L58.5,33 L58,60 L50,60 L49.5,33 Z" />
+        <!-- fuller -->
+        <path android:strokeColor="#FF8B5CFF" android:strokeWidth="1.2" android:strokeLineCap="round" android:fillColor="#00000000"
+            android:pathData="M54,30 L54,56" />
+        <!-- guard -->
+        <path android:fillColor="#FF8B5CFF" android:pathData="M42,60 L66,60 L63,64.5 L45,64.5 Z" />
+        <!-- grip -->
+        <path android:fillColor="#FF2A1F55" android:strokeColor="#FF8B5CFF" android:strokeWidth="1.2"
+            android:pathData="M51.5,64.5 L56.5,64.5 L56,78 L52,78 Z" />
+        <!-- pommel -->
+        <path android:fillColor="#FFD9CCFF" android:strokeColor="#FF8B5CFF" android:strokeWidth="1.2"
+            android:pathData="M54,77.5 L57.5,81.5 L54,85.5 L50.5,81.5 Z" />
+    </group>
+
+    <!-- Dagger 2: tip to the top left, system blue (drawn on top) -->
+    <group android:pivotX="54" android:pivotY="54" android:rotation="-38">
+        <path android:strokeColor="#443FA9FF" android:strokeWidth="6" android:strokeLineJoin="round" android:fillColor="#00000000"
+            android:pathData="M54,22 L58.5,33 L58,60 L50,60 L49.5,33 Z" />
+        <path android:fillColor="#FFCFEBFF" android:strokeColor="#FF3FA9FF" android:strokeWidth="1.4" android:strokeLineJoin="round"
+            android:pathData="M54,22 L58.5,33 L58,60 L50,60 L49.5,33 Z" />
+        <path android:strokeColor="#FF3FA9FF" android:strokeWidth="1.2" android:strokeLineCap="round" android:fillColor="#00000000"
+            android:pathData="M54,30 L54,56" />
+        <path android:fillColor="#FF3FA9FF" android:pathData="M42,60 L66,60 L63,64.5 L45,64.5 Z" />
+        <path android:fillColor="#FF0E2A4A" android:strokeColor="#FF3FA9FF" android:strokeWidth="1.2"
+            android:pathData="M51.5,64.5 L56.5,64.5 L56,78 L52,78 Z" />
+        <path android:fillColor="#FFCFEBFF" android:strokeColor="#FF3FA9FF" android:strokeWidth="1.2"
+            android:pathData="M54,77.5 L57.5,81.5 L54,85.5 L50.5,81.5 Z" />
+    </group>
 </vector>

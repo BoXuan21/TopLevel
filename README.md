@@ -11,15 +11,17 @@ A level-up style life tracker for Android (built for the Galaxy Z Fold), with Cl
 | Area | What it does |
 |---|---|
 | **Status** | Your level, rank (E→S), title and EXP bar. Five stats: STR, VIT, INT, DIS, SPI |
-| **Daily quests** | Each morning Claude reads your plans, your calendar and yesterday's check-in, then builds 4–7 concrete quests. Finishing one earns EXP; clearing them all adds a bonus |
+| **Daily quests** | Each morning Claude reads your plans, your calendar and yesterday's check-in, then builds 4–7 concrete quests. They adapt to you: difficulty follows your completion rate, quests you delete aren't suggested again, and ↻ asks for your wishes ("little time today", "more learning"). Finishing one earns EXP; clearing them all adds a bonus |
+| **Learn: AI quiz** | Type what you're learning (and your level/goal). Claude writes questions for your level, quizzes you every day, checks your typed answer with feedback, and asks more about what you get wrong. Spaced repetition decides what's due. A daily quiz quest completes itself |
 | **Evening report** | Mood, energy, sleep, how the day went, what went well, what you'd change. Claude replies with a reflection and adds a quest for tomorrow |
 | **Nutrition** | Type "200g chicken + rice" and Claude estimates the macros. Progress bars track your kcal and macro goals, and hitting your protein goal earns VIT |
-| **Journal** | Work, learned, training and note logs, each feeding a stat |
-| **Skills** | Things to learn: Locked → In training → Acquired. Claude can suggest your next skills |
+| **Journal** | Work, learned, training and note logs, each feeding a stat (Learn tab) |
+| **Skills** | Things to learn: Locked → In training → Acquired. Claude can suggest your next skills (menu) |
 | **Coach** | Chat with Claude, who sees all your data. Paste a plan and it's saved. Say "I ate X" and it's logged. It can add quests, skills, memories and **Google Calendar events** |
 | **Discovery** | 3 songs picked from your music taste (open in **YouTube Music**) and 2 educational videos for your SRE and learning goals (open in YouTube), refreshed daily |
 | **Health Connect** | Steps, sleep, workouts and weight from Samsung Health or your watch, synced hourly. Measurable quests (e.g. "8,000 steps") complete themselves |
-| **Calisthenics tracking** | Built for advanced athletes. Planche, front lever, back lever, handstand, muscle-up and HSPU, each with 7–8 stages up to elite (full planche push-up, maltese, one-arm FL…). You can rename the stages to your own progressions. Tap a stage to set your level; **Advance ▲** marks a new stage and pays EXP + Gold. Log holds/reps with +kg and notes (parallettes, RPE…), and see per-stage PRs, weekly volume and time-under-tension charts |
+| **Any sport** | Setup asks what you do (gym, running, cycling, football, yoga… or your own). Train only shows what fits: log a session in two taps (sport, minutes, km). Logged sessions count for workout quests, and quests use your sports |
+| **Calisthenics tracking** (if you pick Calisthenics) | Built for advanced athletes. Planche, front lever, back lever, handstand, muscle-up and HSPU, each with 7–8 stages up to elite (full planche push-up, maltese, one-arm FL…). You can rename the stages to your own progressions. Tap a stage to set your level; **Advance ▲** marks a new stage and pays EXP + Gold. Log holds/reps with +kg and notes (parallettes, RPE…), and see per-stage PRs, weekly volume and time-under-tension charts |
 | **Coach-built sessions** (optional, off by default) | Switch on to have Claude program a session from your stages, volume and recovery |
 | **Vault: Gold & rewards** | Quests, sessions, stage-ups, bosses, achievements and saving earn **Gold**. Add real rewards (e.g. "New desk €250, unlock at straddle planche"). To claim one you need the Gold, the € in your savings pot, its condition met, and a 72h cool-down (anti-impulse) |
 | **Savings** | Monthly savings goal, quick +€5/10/20/50 deposits (earns DIS EXP + Gold), and "I almost bought something": skipped purchases go to your pot. The coach adds no-spend and saving quests |

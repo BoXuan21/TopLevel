@@ -66,7 +66,7 @@ private val equipmentOptions = listOf(
 )
 
 private val goalOptions = listOf(
-    "Build muscle", "Lose fat", "Calisthenics skills", "Run / endurance", "Career growth",
+    "Build muscle", "Lose fat", "Get fitter", "Sport performance", "Career growth",
     "Learn new skills", "Save money", "Sleep & recovery", "Mental calm", "Eat healthier",
 )
 
@@ -105,6 +105,8 @@ fun OnboardingScreen(vm: AppViewModel, actions: Actions) {
     var equipment by rememberSaveable { mutableStateOf(p.equipment.split(",").map { it.trim() }.filter { it.isNotEmpty() }) }
     var stageSel by rememberSaveable { mutableStateOf(mapOf<String, Int>()) }
     var trainSel by rememberSaveable { mutableStateOf<List<String>?>(null) } // null = not touched (keep current / plan's)
+    var sportSel by rememberSaveable { mutableStateOf(p.sportList) }
+    var sportNotes by rememberSaveable { mutableStateOf(p.sportNotes) }
     val progress by vm.ladderProgress.collectAsState(initial = emptyList())
     val plans by vm.plans.collectAsState(initial = emptyList())
     val planPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -143,8 +145,10 @@ fun OnboardingScreen(vm: AppViewModel, actions: Actions) {
             }
             4 -> {
                 p.trainingLevel = level
-                p.equipment = equipment.joinToString(", ")
-                trainSel?.let { sel -> vm.setLadders(com.toplevel.app.data.Cali.ladders.map { it.id }.filter { it in sel }) }
+                p.equipment = if (com.toplevel.app.data.Sports.usesSets(sportSel)) equipment.joinToString(", ") else ""
+                vm.setSports(sportSel, sportNotes)
+                if (com.toplevel.app.data.Sports.usesLadders(sportSel))
+                    trainSel?.let { sel -> vm.setLadders(com.toplevel.app.data.Cali.ladders.map { it.id }.filter { it in sel }) }
                 val tracked = vm.trackedLadders.split(",").map { it.trim() }
                 stageSel.forEach { (id, s) -> if (s >= 0 && id in tracked) vm.setStage(id, s, reward = false) }
             }
@@ -232,15 +236,28 @@ fun OnboardingScreen(vm: AppViewModel, actions: Actions) {
                                 listOf(15, 30, 60, 90).forEach { m -> Pick("$m min", learnMin == m, Modifier.weight(1f)) { learnMin = m } }
                             }
                         }
-                        4 -> Ask("Your training level", "So training quests fit you: not too easy, not too hard.") {
-                            Label("TRAINING EXPERIENCE")
+                        4 -> Ask("What sport do you do?", "Pick everything you do. Train, your quests and your coach adapt to it.") {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                (com.toplevel.app.data.Sports.all.map { it.name } + sportSel.filter { s ->
+                                    com.toplevel.app.data.Sports.all.none { it.name.equals(s, true) } }).forEach { n ->
+                                    val on = sportSel.any { it.equals(n, true) }
+                                    Pick("${com.toplevel.app.data.Sports.of(n).icon} $n", on) {
+                                        sportSel = if (on) sportSel.filterNot { it.equals(n, true) } else sportSel + n
+                                    }
+                                }
+                            }
+                            Field(sportNotes, { sportNotes = it }, "In your own words (optional)", minLines = 2, voice = true,
+                                placeholder = "e.g. Gym 3x a week, running on Sundays, want a 10 km under 50 min. Other sports too.")
+                            Label("YOUR LEVEL")
                             com.toplevel.app.data.Prefs.Levels.trainingLevels.forEachIndexed { i, (name, sub) ->
                                 Pick("$name · $sub", level == i, Modifier.fillMaxWidth()) { level = i }
                             }
-                            Label("EQUIPMENT YOU HAVE")
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                equipmentOptions.forEach { e ->
-                                    Pick(e, e in equipment) { equipment = if (e in equipment) equipment - e else equipment + e }
+                            if (com.toplevel.app.data.Sports.usesSets(sportSel)) {
+                                Label("EQUIPMENT YOU HAVE")
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    equipmentOptions.forEach { e ->
+                                        Pick(e, e in equipment) { equipment = if (e in equipment) equipment - e else equipment + e }
+                                    }
                                 }
                             }
                             Label("YOUR TRAINING PLAN")
@@ -250,7 +267,8 @@ fun OnboardingScreen(vm: AppViewModel, actions: Actions) {
                                 color = if (has) C.good else C.muted, fontSize = 14.sp)
                             GhostButton(if (has) "Replace plan file" else "Import plan (PDF / Excel / CSV)", Modifier.fillMaxWidth(),
                                 enabled = vm.busy == null) { planPicker.launch(planMimeTypes) }
-                            Label("WHICH SKILLS DO YOU TRAIN?")
+                            if (com.toplevel.app.data.Sports.usesLadders(sportSel)) {
+                            Label("WHICH CALISTHENICS SKILLS DO YOU TRAIN?")
                             Text("Only these get tracked and asked about. Change it any time in Train.", color = C.muted, fontSize = 14.sp)
                             val ladders = com.toplevel.app.data.Cali.ladders
                             val chosen = trainSel ?: vm.trackedLadders.split(",").map { it.trim() }.filter { it.isNotEmpty() }
@@ -267,6 +285,7 @@ fun OnboardingScreen(vm: AppViewModel, actions: Actions) {
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     l.stages.forEachIndexed { i, s -> Pick(s, cur == i) { stageSel = stageSel + (l.id to i) } }
                                 }
+                            }
                             }
                         }
                         5 -> Ask("Your body", "Used to calculate your calories and macros. Stays on this phone.") {
@@ -392,7 +411,8 @@ private fun Done(name: String) {
         listOf(
             "HOME: best next move, quests, videos & tools to learn",
             "FOOD: snap a meal or scan a barcode",
-            "TRAIN: log sets and skill progress",
+            "TRAIN: log any sport in seconds",
+            "LEARN: tell it what you're learning, it quizzes you",
             "COACH: talk to your AI coach about anything",
         ).forEach {
             Row(Modifier.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {

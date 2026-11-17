@@ -65,6 +65,13 @@ import com.toplevel.app.data.WeekNumbers
 import com.toplevel.app.data.abandonJob
 import com.toplevel.app.data.activeDungeon
 import com.toplevel.app.data.addCard
+import com.toplevel.app.data.logSession
+import com.toplevel.app.data.QuizResult
+import com.toplevel.app.data.addLearnTopic
+import com.toplevel.app.data.checkAnswer
+import com.toplevel.app.data.generateQuiz
+import com.toplevel.app.data.learnTopics
+import com.toplevel.app.data.removeLearnTopic
 import com.toplevel.app.data.addExpense
 import com.toplevel.app.data.cachedReview
 import com.toplevel.app.data.checkJobComplete
@@ -222,6 +229,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteQuest(q: Quest) = io { repo.deleteQuest(q) }
     fun addQuest(title: String, stat: Stat, xp: Int) = io { repo.addQuest(title, stat, xp) }
     fun regenerateQuests() = run("Redesigning today's quests…") { repo.generateQuests(force = true) }
+    /** Regenerate with the user's wishes ("little time today", "more learning", …); they're kept for next days too. */
+    fun regenerateQuests(wishes: String) {
+        prefs.questWishes = wishes
+        regenerateQuests()
+    }
 
     // Discover
     fun regenerateDiscover() = run("Finding new songs & videos…") { repo.generateDiscover(force = true) }
@@ -403,7 +415,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ───────── Growth features ─────────
 
     /** Which section of the Journal tab is open. */
-    var journalTab by mutableStateOf("journal")
+    var journalTab by mutableStateOf("quiz")
 
     /** Opened from the food widget: start the barcode camera. */
     var pendingScan by mutableStateOf(false)
@@ -459,6 +471,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun reviewCard(c: Flashcard, grade: Int) = io { repo.reviewCard(c, grade) }
     fun addCard(front: String, back: String) = io { repo.addCard(front, back) }
+
+    // Learn: topics (= skills with status "learning") + AI quiz
+    fun addLearnTopic(title: String, level: String) = run("Writing your first quiz questions…") {
+        repo.addLearnTopic(title, level)
+        if (prefs.hasKey) {
+            val t = repo.learnTopics().first { it.title.equals(title.trim(), true) }
+            val n = repo.generateQuiz(t)
+            message = "$n questions on ${t.title} ready"
+        }
+        null
+    }
+    fun removeLearnTopic(s: SkillItem) = io { repo.removeLearnTopic(s) }
+    fun moreQuestions(s: SkillItem) = run("Writing new questions on ${s.title}…") {
+        val n = repo.generateQuiz(s)
+        message = if (n > 0) "$n new questions on ${s.title}" else "No new questions this time. Try again."
+        null
+    }
+    /** Result of the last AI-checked answer, shown under the question until the next one. */
+    var quizResult by mutableStateOf<Pair<Long, QuizResult>?>(null)
+    var checking by mutableStateOf(false)
+        private set
+    fun checkAnswer(c: Flashcard, answer: String) {
+        if (checking) return
+        checking = true
+        viewModelScope.launch {
+            try {
+                quizResult = c.id to withContext(Dispatchers.IO) { repo.checkAnswer(c, answer) }
+            } catch (e: Exception) { message = e.message }
+            checking = false
+            refreshStreak()
+        }
+    }
 
     // Spending
     val expensesMonth = repo.db.grow().expensesSince(repo.monthStart())
@@ -569,6 +613,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // Logs
     fun addLog(cat: String, text: String) = io { repo.addLog(cat, text) }
+
+    // Sports (any sport; the Train tab shows only what fits them)
+    var sports by mutableStateOf(prefs.sportList)
+        private set
+    fun setSports(list: List<String>, notes: String) {
+        prefs.sports = list.joinToString(",")
+        prefs.sportNotes = notes
+        sports = prefs.sportList
+        // Calisthenics skill tracking only for people who do calisthenics
+        if (!com.toplevel.app.data.Sports.usesLadders(sports)) setLadders(emptyList())
+        else if (trackedLadders.isBlank()) setLadders(listOf("planche", "frontlever"))
+    }
+    fun logSession(sport: String, minutes: Int, km: Float?, note: String) = io {
+        repo.logSession(sport, minutes, km, note)
+        message = "✓ $sport · $minutes min logged"
+    }
     fun deleteLog(l: LogEntry) = io { repo.deleteLog(l) }
 
     // Skills
@@ -619,7 +679,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         Scheduler.schedule(getApplication(), prefs.morningHour, prefs.eveningHour, replace = true)
 
     fun testKey() = run("Testing API key…") {
-        val r = repo.claude.ask("Reply with exactly: OK", "ping", 10)
+        val r = repo.claude.ask("Reply with exactly: OK", "ping", 300).take(40)
         message = "API key works ✓ ($r)"
         null
     }

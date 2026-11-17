@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -58,29 +59,60 @@ fun TrainScreen(vm: AppViewModel) {
     val sets14 by vm.sets14.collectAsState(initial = emptyList())
     var logTarget by remember { mutableStateOf<String?>(null) }
     var editLadders by remember { mutableStateOf(false) }
+    var more by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     @Suppress("UNUSED_VARIABLE") val version = vm.ladderVersion // redraw when stage names change
     val tracked = vm.trackedLadders.split(",").mapNotNull { Cali.byId(it.trim()) }
 
-    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Gap) {
-        item { SystemHeader("TRAIN") }
+    val sports = vm.sports
+    var editSports by remember { mutableStateOf(false) }
 
-        // Skill ladders (tracking)
-        tracked.forEach { l ->
-            item {
-                LadderPanel(vm, l, progress.firstOrNull { it.ladder == l.id } ?: SkillProgress(l.id), allSets) { logTarget = it }
+    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Gap) {
+        item {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Box(Modifier.weight(1f)) { SystemHeader("TRAIN") }
+                if (sports.isNotEmpty()) TextButton(onClick = { editSports = true }) { Text("My sports", color = C.accent) }
             }
         }
-        item {
-            TextButton(onClick = { editLadders = true }) { Text("Choose skills to track…", color = C.accent) }
+
+        // First time: ask what they do. Everything below adapts to it.
+        if (sports.isEmpty()) {
+            item { SportsPanel(vm, first = true) {} }
+            item { Spacer(Modifier.height(80.dp)) }
+            return@LazyColumn
         }
 
-        item { ManualLog(vm) }
-        item { TodaySets(vm) }
-        if (tracked.isNotEmpty()) item { VolumePanel(tracked, sets14, vm.day) }
-        item { ProgressPanel(vm) }
+        item { SessionLog(vm, sports) }
+        item { WeekSessions(vm) }
+
+        // Calisthenics skill ladders: only for people who do calisthenics
+        if (com.toplevel.app.data.Sports.usesLadders(sports)) {
+            tracked.forEach { l ->
+                item {
+                    LadderPanel(vm, l, progress.firstOrNull { it.ladder == l.id } ?: SkillProgress(l.id), allSets) { logTarget = it }
+                }
+            }
+            item {
+                TextButton(onClick = { editLadders = true }) { Text("Choose skills to track…", color = C.accent) }
+            }
+        }
+
+        // Sets × reps logger: gym, calisthenics, home workouts
+        if (com.toplevel.app.data.Sports.usesSets(sports)) {
+            item { ManualLog(vm) }
+            item { TodaySets(vm) }
+        }
+
+        // Charts and the optional coach session stay out of the way until asked for
+        item {
+            TextButton(onClick = { more = !more }) {
+                Text(if (more) "▲ Hide stats & coach session" else "▼ Stats & coach session", color = C.accent)
+            }
+        }
+        if (more && tracked.isNotEmpty() && com.toplevel.app.data.Sports.usesLadders(sports)) item { VolumePanel(tracked, sets14, vm.day) }
+        if (more && com.toplevel.app.data.Sports.usesSets(sports)) item { ProgressPanel(vm) }
 
         // Optional: coach-built sessions
-        item {
+        if (more || vm.coachSessions) item {
             Panel(
                 title = "Coach-built session",
                 action = {
@@ -118,6 +150,14 @@ fun TrainScreen(vm: AppViewModel) {
     }
 
     logTarget?.let { ex -> QuickLogDialog(vm, ex) { logTarget = null } }
+
+    if (editSports) AlertDialog(
+        onDismissRequest = { editSports = false }, containerColor = C.panel,
+        title = { Text("My sports", color = C.text) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) { SportsPanel(vm, first = false) { editSports = false } } },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = { editSports = false }) { Text("Close") } },
+    )
 
     vm.tip?.let { (ex, text) ->
         AlertDialog(

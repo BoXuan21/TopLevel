@@ -55,6 +55,7 @@ fun HomeScreen(vm: AppViewModel, openFood: () -> Unit, openCheckIn: () -> Unit, 
     val checkIn by vm.checkInToday.collectAsState(initial = null)
     val health by vm.healthToday.collectAsState(initial = null)
     var addOpen by remember { mutableStateOf(false) }
+    var wishesOpen by remember { mutableStateOf(false) }
     val hour = LocalTime.now().hour
 
     // Keep the advice fresh (at most every 3 h), once the morning AI work is done
@@ -107,13 +108,8 @@ fun HomeScreen(vm: AppViewModel, openFood: () -> Unit, openCheckIn: () -> Unit, 
                     C.warn, Modifier.weight(1f), openFood)
                 TodayTile("PROTEIN", "${protein}g", "/ ${vm.prefs.proteinGoal}g", protein.toFloat() / vm.prefs.proteinGoal.coerceAtLeast(1),
                     C.stat(Stat.VITALITY), Modifier.weight(1f), openFood)
-                TodayTile("WATER", "${vm.water}", "/ ${vm.prefs.waterGoal}", vm.water.toFloat() / vm.prefs.waterGoal.coerceAtLeast(1),
-                    C.accent, Modifier.weight(1f)) { vm.addWater(1) }
             }
         }
-
-        item { AdvicePanel(moves, ai = vm.prefs.hasKey && vm.advice.isNotEmpty(), busy = vm.adviceBusy,
-            canRefresh = vm.prefs.hasKey) { vm.refreshAdvice() } }
 
         item {
             val done = quests.count { it.done }
@@ -126,8 +122,9 @@ fun HomeScreen(vm: AppViewModel, openFood: () -> Unit, openCheckIn: () -> Unit, 
                         IconButton(onClick = { addOpen = true }, modifier = Modifier.size(34.dp)) {
                             Icon(Icons.Filled.Add, "Add quest", tint = C.accent)
                         }
-                        IconButton(onClick = { vm.regenerateQuests() }, modifier = Modifier.size(34.dp)) {
-                            Icon(Icons.Filled.Refresh, "Regenerate", tint = C.accent)
+                        IconButton(onClick = { if (vm.prefs.hasKey) wishesOpen = true else vm.regenerateQuests() },
+                            modifier = Modifier.size(34.dp)) {
+                            Icon(Icons.Filled.Refresh, "New quests", tint = C.accent)
                         }
                     }
                 },
@@ -136,13 +133,17 @@ fun HomeScreen(vm: AppViewModel, openFood: () -> Unit, openCheckIn: () -> Unit, 
                     Bar(done.toFloat() / quests.size, C.good, height = 4)
                     Spacer(Modifier.height(8.dp))
                 }
-                if (quests.isEmpty()) Text("No quests yet. Tap ↻ to generate today's quests.", color = C.muted)
+                if (quests.isEmpty()) Text("No quests yet. Tap ↻ to get today's quests.", color = C.muted)
                 quests.forEach { q -> QuestRow(q, onToggle = { vm.toggle(q) }, onDelete = { vm.deleteQuest(q) }) }
-                Text("Tap to complete · hold to delete", color = C.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                Text("Tap to complete · hold to delete (the AI won't suggest it again)", color = C.muted, fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 4.dp))
             }
         }
 
         item { ExtrasPanel(vm, openMore) }
+
+        item { AdvicePanel(moves.take(1), ai = vm.prefs.hasKey && vm.advice.isNotEmpty(), busy = vm.adviceBusy,
+            canRefresh = vm.prefs.hasKey) { vm.refreshAdvice() } }
 
         // Evening report: only once the evening starts (or after you've filed it)
         if (checkIn != null || hour >= vm.prefs.eveningHour - 2) item {
@@ -170,6 +171,30 @@ fun HomeScreen(vm: AppViewModel, openFood: () -> Unit, openCheckIn: () -> Unit, 
     if (addOpen) AddQuestDialog(onDismiss = { addOpen = false }) { t, s, x ->
         vm.addQuest(t, s, x); addOpen = false
     }
+    if (wishesOpen) QuestWishesDialog(vm.prefs.questWishes, onDismiss = { wishesOpen = false }) { w ->
+        vm.regenerateQuests(w); wishesOpen = false
+    }
+}
+
+/** Before new quests: what does the user want? Kept for the following days too. */
+@Composable
+private fun QuestWishesDialog(current: String, onDismiss: () -> Unit, onGo: (String) -> Unit) {
+    var text by remember { mutableStateOf(current) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss, containerColor = C.panel,
+        title = { Text("New quests", color = C.text) },
+        text = {
+            Column {
+                Text("Tell the AI what you want. It also learns from which quests you do, skip or delete.",
+                    color = C.muted, fontSize = 14.sp)
+                Spacer(Modifier.height(10.dp))
+                Field(text, { text = it }, "Your wishes (optional)", minLines = 2, voice = true,
+                    placeholder = "e.g. little time today, more learning, no running, only 4 quests")
+            }
+        },
+        confirmButton = { TextButton(onClick = { onGo(text.trim()) }) { Text("Make quests", color = C.accent) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 /** Name, title, level, rank, EXP. Tap: achievements / status. */
