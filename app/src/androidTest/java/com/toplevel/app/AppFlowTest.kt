@@ -304,8 +304,10 @@ class AppFlowTest {
         scrollTo("LOG A SESSION")
         tapText("🏃 Running"); settle()
         tapText("LOG 45 MIN RUNNING")
-        waitFor("run logged") { repo.life.logsSince(day).any { it.text.startsWith("Running · 45 min") } }
-        assertTrue(repo.prefs.sportMin(day) >= 45)
+        // the journal entry is written first, the minutes right after: wait for both
+        waitFor("run logged") {
+            repo.life.logsSince(day).any { it.text.startsWith("Running · 45 min") } && repo.prefs.sportMin(day) >= 45
+        }
         settle(); dismissPopups(); shot("train_session_logged")
         tapText("▼ Stats & coach session"); settle()
         scroll(2); shot("train_volume")
