@@ -48,6 +48,7 @@ android {
         // so problems that only appear in the shrunk app (like the barcode scanner) are caught.
         create("qa") {
             initWith(getByName("release"))
+            isDebuggable = true // only so the device tests can attach; shrinking is the same as release
             matchingFallbacks += listOf("release")
         }
     }
