@@ -107,9 +107,9 @@ class Repo private constructor(internal val ctx: Context) {
         Widgets.refresh(ctx)
     }
 
-    suspend fun deleteQuest(q: Quest) {
+    suspend fun deleteQuest(q: Quest, learn: Boolean = true) {
         // Deleting a generated quest without doing it = "not for me": the AI avoids it next time
-        if (!q.done && q.source in setOf("ai", "system", "checkin")) prefs.skippedQuests = prefs.skippedQuests + q.title
+        if (learn && !q.done && q.source in setOf("ai", "system", "checkin")) prefs.skippedQuests = prefs.skippedQuests + q.title
         db.withTransaction {
             revoke("quest:${q.id}")
             loseGold("quest:${q.id}")
@@ -132,11 +132,15 @@ class Repo private constructor(internal val ctx: Context) {
                 ?: "Train according to plan", stat = Stat.STRENGTH, xp = 40, source = "system")
             planned.isEmpty() -> Quest(date = day, title = "Rest day: 20 min walk or mobility", stat = Stat.VITALITY, xp = 15, source = "system")
             else -> Quest(date = day, title = "Today: " + planned.joinToString(" + ") { it.title.ifBlank { it.sport } },
-                detail = planned.mapNotNull { it.detail.ifBlank { null } }.joinToString(" · "), stat = Stat.STRENGTH, xp = 40,
+                detail = planned.mapNotNull { it.detail.ifBlank { null } }.joinToString("\n"), stat = Stat.STRENGTH, xp = 40,
                 source = "system", autoType = "workout", target = planned.sumOf { it.minutes }.coerceAtLeast(0))
                 .let { if (it.target == 0) it.copy(autoType = "") else it }
         }
-        return listOf(
+        val warmups = planned.orEmpty().filter { it.warmup.isNotBlank() }
+        val warmup = if (warmups.isEmpty()) null else Quest(date = day, title = "Warm-up before training",
+            detail = warmups.joinToString(" · ") { it.warmup }, stat = Stat.VITALITY, xp = 10, source = "system")
+        return listOfNotNull(
+            warmup,
             training,
             Quest(date = day, title = "Walk 8,000 steps", stat = Stat.VITALITY, xp = 20, source = "system", autoType = "steps", target = 8000),
             Quest(date = day, title = "Hit your protein goal (${prefs.proteinGoal} g)", stat = Stat.VITALITY, xp = 20, source = "system"),
@@ -196,7 +200,7 @@ class Repo private constructor(internal val ctx: Context) {
      * Builds today's quests. With an API key, Claude designs them from your plans,
      * calendar, recent history and how you've handled past quests. Without one, a default set is used.
      */
-    suspend fun generateQuests(force: Boolean = false): String? {
+    suspend fun generateQuests(force: Boolean = false, instructions: String = ""): String? {
         val day = today()
         val existing = game.questsForNow(day)
         if (!force && prefs.lastQuestGen == day) return null
@@ -207,7 +211,8 @@ class Repo private constructor(internal val ctx: Context) {
             return null
         }
         return try {
-            val ctxText = buildContext() + "\n" + questProfile(day)
+            val ctxText = buildContext() + "\n" + questProfile(day) +
+                (if (instructions.isNotBlank()) "\n## The coach's instructions for today's quests (follow these)\n$instructions\n" else "")
             val res = claude.askJson(
                 system = """You design the user's daily quests in a gamified self-improvement app. The quests must fit THIS user, not a generic person.
 Stats: STRENGTH (training), VITALITY (nutrition, sleep, health), INTELLECT (learning), DISCIPLINE (work, focus, habits), SPIRIT (mood, reflection, relationships, rest).
@@ -219,8 +224,13 @@ Personalise:
 - Write titles and details in the user's language (see "Language").
 Rules:
 - 4 to 7 quests for TODAY, concrete and checkable ("Push day: bench 4x8, OHP 3x10…", not "work out").
-- If there is a "Weekly sport plan": today's training quest IS today's planned session(s) (title = the session, detail = its content,
-  auto "workout", target = its minutes). Planned rest day → a light recovery quest (walk, mobility), no hard training.
+- If there is a "Weekly sport plan": today's training quest IS today's planned session(s), aligned 1:1 with their plan:
+  title = the session name, detail = the COMPLETE workout for today (every exercise with sets × reps × load/stage, or the run's
+  distance/pace/intervals). Take it from the weekly plan and, where that is shorter, from their stored Training plan for this day —
+  never a shortened or invented version. auto "workout", target = its minutes. Planned rest day → a light recovery quest, no hard training.
+- On a training day also add a warm-up quest listed BEFORE the training quest: title "Warm-up: <session>" (in their language,
+  but always starting with "Warm-up" or "Aufwärmen"), detail = the warm-up from their plan (weekly plan "warm-up", or their
+  stored training plan); if the plan has none, a short 5–10 min warm-up that fits today's session. stat VITALITY, xp 10, auto "".
 - Training quests are in THEIR sports (## Training profile → Sports, "In their words"), never a sport they don't do.
   Follow today's training plan / their weekly rhythm; spread their sports over the week; on rest days give a recovery quest.
   If they log sessions by hand, phrase it so one logged session completes it (or use auto "workout" with minutes).
@@ -515,6 +525,30 @@ Return {"videos":[{"title":"...","channel":"...","why":"one short line","query":
                 mapOf("kcal" to ("integer" to "kcal"), "protein" to ("integer" to "g"),
                     "carbs" to ("integer" to "g"), "fat" to ("integer" to "g")),
                 listOf("kcal", "protein", "carbs", "fat")),
+            Claude.tool("edit_quest", "Change one of the user's quests (use its #id from the quest list). Only the fields you send change.",
+                mapOf("id" to ("integer" to "Quest id, the number after #"),
+                    "title" to ("string" to "New title"),
+                    "detail" to ("string" to "New how/when"),
+                    "stat" to ("string" to stats),
+                    "xp" to ("integer" to "10-60"),
+                    "auto" to ("string" to "Auto-complete: steps, sleep, workout, cards, or none"),
+                    "target" to ("integer" to "Target for auto: step count, sleep minutes, workout minutes or quiz questions")),
+                listOf("id")),
+            Claude.tool("remove_quest", "Remove one of the user's quests (use its #id). Use when they ask, or when a quest no longer fits (e.g. training moved to another day).",
+                mapOf("id" to ("integer" to "Quest id, the number after #")),
+                listOf("id")),
+            Claude.tool("regenerate_quests", "Throw away today's open generated quests and design a fresh set. Completed and hand-made quests stay.",
+                mapOf("instructions" to ("string" to "Optional: what the new set should take into account (e.g. 'sick today, keep it light')")),
+                emptyList()),
+            Claude.tool("set_quest_wishes", "Save the user's lasting wishes for their daily quests (e.g. 'no food quests', 'always one reading quest'). Replaces the stored wishes, so include the existing ones they still want.",
+                mapOf("text" to ("string" to "All their quest wishes")),
+                listOf("text")),
+            weekPlanTool,
+            Claude.tool("update_training_profile", "Change the user's training profile. Only the fields you send change.",
+                mapOf("sports" to ("string" to "Comma-separated list of ALL their sports. Known names: ${Sports.all.joinToString { it.name }}"),
+                    "notes" to ("string" to "Their training in their own words (goals, rhythm, constraints)"),
+                    "equipment" to ("string" to "Equipment they have")),
+                emptyList()),
             Claude.tool("add_calendar_event", "Create an event in the user's Google Calendar (e.g. to schedule a workout or study block).",
                 mapOf("title" to ("string" to "Event title"),
                     "start" to ("string" to "Local start time, format YYYY-MM-DDTHH:MM"),
@@ -522,6 +556,51 @@ Return {"videos":[{"title":"...","channel":"...","why":"one short line","query":
                     "description" to ("string" to "Optional details")),
                 listOf("title", "start", "minutes")),
         ))
+    }
+
+    /** Weekly schedule tool: nested sessions, so it's declared by hand. */
+    private val weekPlanTool: JsonObject by lazy {
+        fun prop(type: String, desc: String) = buildJsonObject { put("type", type); put("description", desc) }
+        fun strs(vararg s: String) = JsonArray(s.map { JsonPrimitive(it) })
+        buildJsonObject {
+            put("name", "update_week_plan")
+            put("description", "Change the user's weekly training schedule (the plan in the Train tab; daily training quests follow it). " +
+                "Send only the days that change, each with its COMPLETE new list of sessions; an empty list makes it a rest day. " +
+                "To move a session, send both days. Set replace_all to rebuild the whole week (days not sent become rest days).")
+            put("input_schema", buildJsonObject {
+                put("type", "object")
+                put("properties", buildJsonObject {
+                    put("days", buildJsonObject {
+                        put("type", "array")
+                        put("items", buildJsonObject {
+                            put("type", "object")
+                            put("properties", buildJsonObject {
+                                put("day", buildJsonObject {
+                                    put("type", "string"); put("enum", strs(*WeekPlan.names.toTypedArray()))
+                                })
+                                put("sessions", buildJsonObject {
+                                    put("type", "array")
+                                    put("items", buildJsonObject {
+                                        put("type", "object")
+                                        put("properties", buildJsonObject {
+                                            put("sport", prop("string", "One of their sports"))
+                                            put("title", prop("string", "Short, e.g. 'Push day', 'Easy run 6 km'"))
+                                            put("minutes", prop("integer", "Duration"))
+                                            put("detail", prop("string", "The full session content, max 300 chars (exercises x sets x reps, pace...)"))
+                                            put("warmup", prop("string", "Warm-up for this session, max 150 chars"))
+                                        })
+                                        put("required", strs("sport", "title"))
+                                    })
+                                })
+                            })
+                            put("required", strs("day", "sessions"))
+                        })
+                    })
+                    put("replace_all", prop("boolean", "true = the days sent are the whole week"))
+                })
+                put("required", strs("days"))
+            })
+        }
     }
 
     /**
@@ -553,6 +632,76 @@ Return {"videos":[{"title":"...","channel":"...","why":"one short line","query":
                 addQuest(str(input, "title") ?: "Quest", Stat.parse(str(input, "stat")), int(input, "xp", 20),
                     day = d, detail = str(input, "detail").orEmpty(), source = "ai")
                 "✓ Quest added: ${str(input, "title")}"
+            }
+            "edit_quest" -> {
+                val q = game.quest(int(input, "id", -1).toLong())
+                when {
+                    q == null -> "✗ No quest #${int(input, "id")}"
+                    q.done -> "✗ \"${q.title}\" is already done; it can't be changed"
+                    else -> {
+                        val auto = str(input, "auto")?.lowercase()?.let { if (it in setOf("steps", "sleep", "workout", "cards")) it else "" }
+                        val nq = q.copy(
+                            title = str(input, "title")?.takeIf { it.isNotBlank() } ?: q.title,
+                            detail = str(input, "detail") ?: q.detail,
+                            stat = str(input, "stat")?.let { Stat.parse(it) } ?: q.stat,
+                            xp = if (input.containsKey("xp")) int(input, "xp", q.xp).coerceIn(5, 100) else q.xp,
+                            autoType = auto ?: q.autoType,
+                            target = if (input.containsKey("target")) int(input, "target") else q.target,
+                        ).let { if (it.autoType.isEmpty()) it.copy(target = 0) else it }
+                        game.updateQuest(nq)
+                        Widgets.refresh(ctx)
+                        "✓ Quest changed: ${nq.title}"
+                    }
+                }
+            }
+            "remove_quest" -> {
+                val q = game.quest(int(input, "id", -1).toLong())
+                if (q == null) "✗ No quest #${int(input, "id")}" else {
+                    deleteQuest(q, learn = false)
+                    "✓ Quest removed: ${q.title}"
+                }
+            }
+            "regenerate_quests" -> {
+                generateQuests(force = true, instructions = str(input, "instructions").orEmpty())
+                    ?.let { "✗ Couldn't make new quests: $it" }
+                    ?: ("✓ New quests for today:\n" + game.questsForNow(today()).filter { !it.done }
+                        .joinToString("\n") { "#${it.id} ${it.title}" })
+            }
+            "set_quest_wishes" -> {
+                prefs.questWishes = str(input, "text").orEmpty().trim()
+                "✓ Quest wishes saved (used from the next quest set)"
+            }
+            "update_week_plan" -> {
+                val replace = str(input, "replace_all")?.toBoolean() == true
+                var plan = if (replace) WeekPlan() else weekPlan() ?: WeekPlan()
+                val changed = mutableListOf<String>()
+                (input["days"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }.forEach { d ->
+                    val i = WeekPlan.names.indexOfFirst { n -> (str(d, "day") ?: "").take(3).equals(n, true) }
+                    if (i < 0) return@forEach
+                    val sessions = (d["sessions"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }.map { s ->
+                        PlanSession(sport = str(s, "sport") ?: prefs.sportList.firstOrNull() ?: "Training",
+                            title = str(s, "title").orEmpty(), minutes = int(s, "minutes"), detail = str(s, "detail").orEmpty(),
+                            warmup = str(s, "warmup").orEmpty())
+                    }
+                    plan = plan.withDay(i, sessions)
+                    changed += WeekPlan.names[i] + ": " + sessions.joinToString("; ") { it.label() }.ifBlank { "rest" }
+                }
+                if (changed.isEmpty()) "✗ No valid days sent" else {
+                    saveWeekPlan(plan)
+                    "✓ Week plan updated\n" + changed.joinToString("\n")
+                }
+            }
+            "update_training_profile" -> {
+                str(input, "sports")?.let { s ->
+                    prefs.sports = s.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                        .map { n -> Sports.all.firstOrNull { it.name.equals(n, true) }?.name ?: n }.distinct().joinToString(",")
+                    // Calisthenics skill tracking only for people who do calisthenics
+                    if (!Sports.usesLadders(prefs.sportList)) prefs.trackedLadders = ""
+                    else if (prefs.trackedLadders.isBlank()) prefs.trackedLadders = "planche,frontlever"
+                }
+                str(input, "notes")?.let { prefs.sportNotes = it.trim() }
+                str(input, "equipment")?.let { prefs.equipment = it.trim() }
+                "✓ Training profile: ${prefs.sportList.joinToString()}"
             }
             "log_food" -> {
                 addFood(str(input, "name") ?: "Food", int(input, "kcal"), int(input, "protein"),
@@ -637,11 +786,16 @@ You help with their whole life: work and career (see their Work plan), learning,
 For work and learning questions give concrete, technical, current answers: tools, commands, resources, videos worth watching.
 Style: direct, warm, practical, no fluff. Short answers on a phone screen unless they ask for depth. Use their data below.
 When the user shares information worth keeping (a plan, a goal, food they ate, something learned, a preference), STORE it with your tools without asking — then mention briefly what you saved.
-If they paste a training or eating plan, save it with update_plan.
+If they paste a training or eating plan, save it with update_plan (for training, also update_week_plan so the schedule matches).
+You can change the app for them, not just advise. When they ask for a change, or agree to one you proposed, MAKE it with your tools instead of explaining how:
+- Quests: edit_quest / remove_quest / add_quest by #id, or regenerate_quests for a fresh set (sick, travelling, busy day…). Lasting wishes → set_quest_wishes.
+- Training schedule: update_week_plan (move, swap, add or drop sessions, deload week, new plan). If today's sessions change, fix today's training quest too.
+- Sports / equipment: update_training_profile. Nutrition targets: set_nutrition_goals.
+Small, clearly wanted changes: just do them. Big changes they didn't ask for (rewriting the whole week, replacing all quests): propose first, act after they agree.
 Their calendar holds their appointments: treat them as fixed and plan around them.${if (!prefs.calendarWrite) " You can't add calendar events; suggest times instead." else ""}
 Match their training level and equipment (see Training profile); adapt to what they've already done today (steps, sets, food logged).
 
-${buildContext()}"""
+${buildContext()}${if (prefs.questWishes.isNotBlank()) "\n## Their stored quest wishes\n${prefs.questWishes}\n" else ""}"""
             val history = life.recentChat(16)
             val msgs = mutableListOf<JsonObject>()
             // API requires alternating roles starting with user; merge consecutive same-role messages.
@@ -660,8 +814,8 @@ ${buildContext()}"""
             val convo = ArrayList<JsonElement>(msgs)
             val actions = mutableListOf<String>()
             var finalText = ""
-            for (round in 0 until 6) {
-                val res = claude.send(system, JsonArray(convo), chatTools(), maxTokens = 1500, cache = true)
+            for (round in 0 until 8) {
+                val res = claude.send(system, JsonArray(convo), chatTools(), maxTokens = 4000, cache = true)
                 val content = res["content"]?.jsonArray ?: JsonArray(emptyList())
                 val text = Claude.textOf(res)
                 if (text.isNotBlank()) finalText = text
@@ -748,10 +902,18 @@ ${buildContext()}"""
             }
         }
 
+        fun questLine(q: Quest) = "- #${q.id} [${if (q.done) "x" else " "}] ${q.title}" +
+            (if (q.detail.isNotBlank()) " — ${q.detail.take(120)}" else "") +
+            " (${q.stat.short} +${q.xp}${if (q.autoType.isNotEmpty()) ", auto ${q.autoType} ${q.target}" else ""})\n"
         val quests = game.questsForNow(day)
         if (quests.isNotEmpty()) {
             sb.append("\n## Today's quests\n")
-            quests.forEach { sb.append("- [${if (it.done) "x" else " "}] ${it.title} (${it.stat.short} +${it.xp})\n") }
+            quests.forEach { sb.append(questLine(it)) }
+        }
+        val tomorrowQuests = if (lite) emptyList() else game.questsForNow(day + 1)
+        if (tomorrowQuests.isNotEmpty()) {
+            sb.append("\n## Tomorrow's quests so far\n")
+            tomorrowQuests.forEach { sb.append(questLine(it)) }
         }
 
         val food = life.foodSince(day - 6)

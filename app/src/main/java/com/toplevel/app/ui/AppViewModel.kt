@@ -212,6 +212,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!wizardDone) return
         // first open of the day: penalties, quests, boss, discoveries
         if (prefs.lastQuestGen != day) run("Designing today's quests…") {
+            // Late Samsung Health data can still clear yesterday's measurable quests before they're judged
+            if (HealthSync.granted(getApplication())) HealthSync.sync(repo)
             repo.applyPenalties()
             val e1 = repo.generateQuests()
             val qs = repo.game.questsForNow(repo.today())
@@ -619,7 +621,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
-    fun syncHealth() = run("Syncing health data…") { HealthSync.sync(repo) }
+    fun syncHealth() = run("Syncing health data…") {
+        HealthSync.sync(repo) ?: null.also { message = HealthSync.lastSummary }
+    }
 
     // Logs
     fun addLog(cat: String, text: String) = io { repo.addLog(cat, text) }
@@ -677,7 +681,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         null
     }
     fun setPlanDay(i: Int, text: String) {
-        val p = (weekPlan ?: com.toplevel.app.data.WeekPlan()).withDay(i, com.toplevel.app.data.WeekPlan.parseLines(text, sports))
+        val old = weekPlan?.day(i).orEmpty()
+        // Editing the text keeps each session's details and warm-up when the session itself is still there
+        val parsed = com.toplevel.app.data.WeekPlan.parseLines(text, sports).map { s ->
+            old.firstOrNull { it.title.equals(s.title, true) && it.sport.equals(s.sport, true) }
+                ?.let { o -> s.copy(detail = o.detail, warmup = o.warmup) } ?: s
+        }
+        val p = (weekPlan ?: com.toplevel.app.data.WeekPlan()).withDay(i, parsed)
         repo.saveWeekPlan(p); weekPlan = p
     }
     fun clearWeekPlan() { repo.saveWeekPlan(null); weekPlan = null }
@@ -721,7 +731,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun focusFinishedLocally() { focusEnd = prefs.focusEnd }
 
     // Chat
-    fun send(text: String) = run("Thinking…") { repo.chat(text) }
+    fun send(text: String) = run("Thinking…") {
+        val err = repo.chat(text)
+        // The coach may have changed the week plan or training profile: redraw from storage
+        weekPlan = repo.weekPlan()
+        sports = prefs.sportList
+        trackedLadders = prefs.trackedLadders
+        err
+    }
     fun clearChat() = io { repo.life.clearChat() }
 
     // Plans / memories / settings

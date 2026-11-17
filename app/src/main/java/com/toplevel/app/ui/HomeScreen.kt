@@ -111,6 +111,11 @@ fun HomeScreen(vm: AppViewModel, openFood: () -> Unit, openCheckIn: () -> Unit, 
             }
         }
 
+        // Daily check-in: always on Home. In the evening, until it's filed, it moves above the quests.
+        val evening = hour >= vm.prefs.eveningHour - 2
+        val checkInFirst = checkIn == null && evening
+        if (checkInFirst) item { CheckInPanel(checkIn, evening, openCheckIn) }
+
         item {
             val done = quests.count { it.done }
             Panel(
@@ -140,31 +145,13 @@ fun HomeScreen(vm: AppViewModel, openFood: () -> Unit, openCheckIn: () -> Unit, 
             }
         }
 
+        if (!checkInFirst) item { CheckInPanel(checkIn, evening, openCheckIn) }
+
         item { ExtrasPanel(vm, openMore) }
 
         item { AdvicePanel(moves.take(1), ai = vm.prefs.hasKey && vm.advice.isNotEmpty(), busy = vm.adviceBusy,
             canRefresh = vm.prefs.hasKey) { vm.refreshAdvice(manual = true) } }
 
-        // Evening report: only once the evening starts (or after you've filed it)
-        if (checkIn != null || hour >= vm.prefs.eveningHour - 2) item {
-            Panel(title = "Evening report", color = C.stat(Stat.SPIRIT)) {
-                val c = checkIn
-                if (c == null) {
-                    Text("How was your day? Report in to gain Spirit EXP and get your coach's read on it.",
-                        color = C.muted, fontSize = 15.sp)
-                    Spacer(Modifier.height(10.dp))
-                    GhostButton("Start check-in", color = C.stat(Stat.SPIRIT), onClick = openCheckIn)
-                } else {
-                    Text("Mood ${c.mood}/5 · Energy ${c.energy}/5 · Sleep ${c.sleepHours}h",
-                        color = C.accentSoft, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    if (c.reflection.isNotBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(c.reflection, color = C.text, fontSize = 15.sp, lineHeight = 21.sp)
-                    }
-                    TextButton(onClick = openCheckIn) { Text("Edit check-in", color = C.accent) }
-                }
-            }
-        }
         item { Spacer(Modifier.height(24.dp)) }
     }
 
@@ -173,6 +160,27 @@ fun HomeScreen(vm: AppViewModel, openFood: () -> Unit, openCheckIn: () -> Unit, 
     }
     if (wishesOpen) QuestWishesDialog(vm.prefs.questWishes, onDismiss = { wishesOpen = false }) { w ->
         vm.regenerateQuests(w); wishesOpen = false
+    }
+}
+
+@Composable
+private fun CheckInPanel(c: com.toplevel.app.data.CheckIn?, evening: Boolean, openCheckIn: () -> Unit) {
+    Panel(title = "Daily check-in", color = C.stat(Stat.SPIRIT)) {
+        if (c == null) {
+            Text(if (evening) "How was your day? Report in to gain Spirit EXP and get your coach's read on it."
+                else "Check in any time today: mood, energy, sleep and how it's going. Your coach uses it for tomorrow's quests.",
+                color = if (evening) C.text else C.muted, fontSize = 15.sp, lineHeight = 21.sp)
+            Spacer(Modifier.height(10.dp))
+            GhostButton("Start check-in", color = C.stat(Stat.SPIRIT), onClick = openCheckIn)
+        } else {
+            Text("✓ Done · Mood ${c.mood}/5 · Energy ${c.energy}/5 · Sleep ${c.sleepHours}h",
+                color = C.accentSoft, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            if (c.reflection.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(c.reflection, color = C.text, fontSize = 15.sp, lineHeight = 21.sp)
+            }
+            TextButton(onClick = openCheckIn) { Text("Edit check-in", color = C.accent) }
+        }
     }
 }
 

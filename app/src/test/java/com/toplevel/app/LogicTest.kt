@@ -15,6 +15,16 @@ import org.junit.Test
 
 class LogicTest {
 
+    @Test fun healthIntervalsCountOverlapsOnce() {
+        val t0 = java.time.Instant.parse("2026-11-16T23:00:00Z")
+        fun at(min: Long) = t0.plusSeconds(min * 60)
+        // Samsung Health + a second app writing the same night, plus a separate nap
+        val m = com.toplevel.app.health.HealthSync.merged(listOf(
+            at(0) to at(420), at(30) to at(450), at(900) to at(930), at(10) to at(10)))
+        assertEquals(2, m.size)
+        assertEquals(450 + 30, m.sumOf { java.time.Duration.between(it.first, it.second).toMinutes() })
+    }
+
     @Test fun weekPlanLines() {
         val s = com.toplevel.app.data.WeekPlan.parseLines(
             "Gym / weights: Push day 60 min\nEasy run 1 h\n\nrest", listOf("Running", "Gym / weights"))

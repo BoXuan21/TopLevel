@@ -160,6 +160,7 @@ fun WeekPlanPanel(vm: AppViewModel) {
                         s.forEach { p ->
                             Text("${Sports.of(p.sport).icon} ${p.label()}", color = if (isToday) C.text else C.text.copy(alpha = 0.85f),
                                 fontSize = 15.sp, fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal)
+                            if (isToday && p.warmup.isNotBlank()) Text("Warm-up: ${p.warmup}", color = C.muted, fontSize = 13.sp)
                             if (isToday && p.detail.isNotBlank()) Text(p.detail, color = C.muted, fontSize = 13.sp)
                         }
                     }

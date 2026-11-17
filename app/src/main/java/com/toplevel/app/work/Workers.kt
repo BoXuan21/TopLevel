@@ -67,13 +67,14 @@ class MorningWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
     override suspend fun doWork(): Result {
         val repo = Repo.get(applicationContext)
         val day = repo.today()
+        // Sync first: yesterday's steps/sleep often reach Health Connect late and can still clear its quests
+        HealthSync.sync(repo)
         if (repo.prefs.lastQuestGen != day) {
             repo.applyPenalties()
             repo.generateQuests()
         }
         repo.generateDiscover()
         if (repo.prefs.extra("boss")) repo.generateBoss()
-        HealthSync.sync(repo)
         val quests = repo.game.questsForNow(day)
         Notifier.show(applicationContext, 1, "⚔ Daily quests are ready",
             quests.take(4).joinToString("\n") { "• ${it.title}" }.ifBlank { "Open TopLevel to start your day." },

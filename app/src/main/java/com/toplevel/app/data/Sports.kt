@@ -44,7 +44,9 @@ object Sports {
 // ───────────────────────── Weekly plan ─────────────────────────
 
 @kotlinx.serialization.Serializable
-data class PlanSession(val sport: String, val title: String, val minutes: Int = 0, val detail: String = "") {
+data class PlanSession(val sport: String, val title: String, val minutes: Int = 0, val detail: String = "",
+                       /** Warm-up for this session, from their plan (empty = none given). */
+                       val warmup: String = "") {
     fun label() = buildString {
         append(title.ifBlank { sport })
         if (minutes > 0) append(" · ").append(minutes).append(" min")
@@ -89,7 +91,8 @@ fun Repo.saveWeekPlan(p: WeekPlan?) {
 
 /** The plan as text, for the AI context and quests. */
 fun WeekPlan.describe(): String = WeekPlan.names.mapIndexed { i, n ->
-    "$n: " + day(i).joinToString("; ") { s -> "${s.sport} – ${s.label()}" + if (s.detail.isNotBlank()) " (${s.detail})" else "" }
+    "$n: " + day(i).joinToString("; ") { s -> "${s.sport} – ${s.label()}" + (if (s.detail.isNotBlank()) " (${s.detail})" else "") +
+        if (s.warmup.isNotBlank()) " [warm-up: ${s.warmup}]" else "" }
         .ifBlank { "rest" }
 }.joinToString("\n")
 
@@ -105,10 +108,13 @@ ${if (pasted.isNotBlank()) "They pasted their own plan: convert it FAITHFULLY to
             "don't invent extra sessions; if days aren't given, spread it sensibly over the week)."
         else "Design a realistic week from their sports, their own words, level and any stored plan. Include rest days; never more than they can do."}
 - Only their sports (unless the pasted plan says otherwise).
-- title: short, e.g. "Push day", "Easy run 6 km", "Intervals 6×400 m". minutes: duration. detail: the key content in max 120 chars
-  (exercises × sets × reps, pace, …).
+- title: short, e.g. "Push day", "Easy run 6 km", "Intervals 6×400 m". minutes: duration.
+- detail: the session's actual content, max 300 chars: every exercise with sets × reps (× weight/stage), or pace/distance/intervals.
+  From a pasted plan, copy it faithfully; this is what their daily quest shows.
+- warmup: the warm-up for that session, max 150 chars. Use the plan's own warm-up when it has one; otherwise a short 5–10 min
+  warm-up that fits the session (e.g. "5 min easy jog, leg swings, 2 build-up sprints"). Empty for rest/very light sessions.
 - Write in the user's language (language of their notes / pasted plan).
-Return {"days":[{"day":"Mon","sessions":[{"sport":"Running","title":"...","minutes":45,"detail":"..."}]}, … all 7 days Mon–Sun, empty sessions = rest]}""",
+Return {"days":[{"day":"Mon","sessions":[{"sport":"Running","title":"...","minutes":45,"detail":"...","warmup":"..."}]}, … all 7 days Mon–Sun, empty sessions = rest]}""",
         user = buildString {
             append("Sports: ${prefs.sportList.joinToString().ifBlank { "not set" }}\n")
             if (prefs.sportNotes.isNotBlank()) append("In their words: ${prefs.sportNotes}\n")
@@ -117,7 +123,7 @@ Return {"days":[{"day":"Mon","sessions":[{"sport":"Running","title":"...","minut
             if (pasted.isNotBlank()) append("\n## Their pasted plan\n${pasted.take(PlanImport.MAX_CHARS)}\n")
             else if (stored.isNotBlank()) append("\n## Their stored training plan\n$stored\n")
         },
-        maxTokens = 3000,
+        maxTokens = 5000,
     ) as? kotlinx.serialization.json.JsonObject ?: throw IllegalStateException("Couldn't build a plan. Try again.")
     val days = (o["days"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { it as? kotlinx.serialization.json.JsonObject }
     val plan = List(7) { i ->
@@ -128,6 +134,7 @@ Return {"days":[{"day":"Mon","sessions":[{"sport":"Running","title":"...","minut
                 title = com.toplevel.app.ai.Claude.str(s, "title").orEmpty(),
                 minutes = com.toplevel.app.ai.Claude.int(s, "minutes"),
                 detail = com.toplevel.app.ai.Claude.str(s, "detail").orEmpty(),
+                warmup = com.toplevel.app.ai.Claude.str(s, "warmup").orEmpty(),
             )
         }
     }
@@ -135,6 +142,9 @@ Return {"days":[{"day":"Mon","sessions":[{"sport":"Running","title":"...","minut
     if (pasted.isNotBlank()) life.upsertPlan(Plan(PlanType.TRAINING, pasted.trim(), System.currentTimeMillis()))
     return WeekPlan(plan).also { saveWeekPlan(it) }
 }
+
+/** A warm-up quest is ticked by hand: logging the session doesn't complete it. */
+fun isWarmup(q: Quest) = q.title.startsWith("Warm", true) || q.title.startsWith("Aufwärm", true)
 
 /** Log a session of any sport. Counts for workout quests like a watch workout does. */
 suspend fun Repo.logSession(sport: String, minutes: Int, km: Float?, note: String) {
@@ -145,6 +155,6 @@ suspend fun Repo.logSession(sport: String, minutes: Int, km: Float?, note: Strin
     val total = maxOf(watch, prefs.sportMin(day))
     game.questsForNow(day).filter { !it.done && it.autoType == "workout" && it.target in 1..total }.forEach { completeQuest(it.id) }
     // A plain training quest ("Train according to plan", "Run 5 km") is done once a session is logged
-    game.questsForNow(day).firstOrNull { !it.done && it.stat == Stat.STRENGTH && it.autoType == "" }?.let { completeQuest(it.id) }
+    game.questsForNow(day).firstOrNull { !it.done && it.stat == Stat.STRENGTH && it.autoType == "" && !isWarmup(it) }?.let { completeQuest(it.id) }
     Widgets.refresh(ctx)
 }

@@ -67,7 +67,8 @@ fun CoachScreen(vm: AppViewModel) {
                         if (vm.prefs.hasKey)
                             "Ask anything — training, food, work, what to learn, or just talk about your day.\n\n" +
                                 "Paste your training or eating plan here and I'll store it. Tell me what you ate and I'll log it. " +
-                                "I can also add quests, skills and calendar events for you."
+                                "I can also change things for you: today's quests, your weekly training schedule, " +
+                                "your sports and nutrition targets, skills and calendar events."
                         else "Add your Anthropic API key in Setup to talk to your coach.",
                         color = C.text, fontSize = 14.sp, lineHeight = 20.sp,
                     )
