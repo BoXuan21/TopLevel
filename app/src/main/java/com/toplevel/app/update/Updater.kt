@@ -149,7 +149,7 @@ object Updater {
     internal fun notify(ctx: Context, title: String, text: String, tap: PendingIntent?) {
         if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val n = NotificationCompat.Builder(ctx, Notifier.CHANNEL)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title).setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .apply { if (tap != null) setContentIntent(tap) }
