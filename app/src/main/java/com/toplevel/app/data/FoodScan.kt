@@ -68,8 +68,15 @@ object FoodScan {
         return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
     }
 
-    /** Finds an EAN/UPC barcode in the photo, on-device. */
-    suspend fun readBarcode(b: Bitmap): String? = suspendCancellableCoroutine { cont ->
+    /** Finds an EAN/UPC barcode in the photo, on-device. Gives up after 20 s instead of waiting forever. */
+    suspend fun readBarcode(b: Bitmap): String? {
+        var finished = false
+        val code = kotlinx.coroutines.withTimeoutOrNull(20_000) { decode(b).also { finished = true } }
+        if (!finished) throw java.io.IOException("The barcode reader didn't respond. Try again.")
+        return code
+    }
+
+    private suspend fun decode(b: Bitmap): String? = suspendCancellableCoroutine { cont ->
         val scanner = BarcodeScanning.getClient(
             BarcodeScannerOptions.Builder().setBarcodeFormats(
                 Barcode.FORMAT_EAN_13, Barcode.FORMAT_EAN_8, Barcode.FORMAT_UPC_A, Barcode.FORMAT_UPC_E,

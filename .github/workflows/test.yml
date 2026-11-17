@@ -60,7 +60,7 @@ jobs:
           script: |
             adb install -r app/build/outputs/apk/qa/app-qa.apk
             adb install -r app/build/outputs/apk/androidTest/qa/app-qa-androidTest.apk
-            adb shell am instrument -w -r -e class com.toplevel.app.BarcodeTest com.toplevel.app.test/androidx.test.runner.AndroidJUnitRunner > shrunk.txt || true
+            timeout 300 adb shell am instrument -w -r -e class com.toplevel.app.BarcodeTest com.toplevel.app.test/androidx.test.runner.AndroidJUnitRunner > shrunk.txt || true
             grep -vE "^INSTRUMENTATION_STATUS: (stream|numtests|current|id|class)" shrunk.txt | tail -40
             adb logcat -d -t 1500 | grep -iE "mlkit|barhopper|barcode|FATAL|AndroidRuntime" | tail -40 || true
             grep -q "^OK (" shrunk.txt

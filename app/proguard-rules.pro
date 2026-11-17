@@ -19,3 +19,13 @@
 
 # Readable stack traces in crash reports
 -keepattributes SourceFile, LineNumberTable
+
+# ML Kit barcode scanner: the bundled native reader (barhopper) looks up Java classes by name over JNI,
+# and ML Kit finds its components by reflection. Shrinking/renaming them made scans hang in release builds.
+-keep class com.google.mlkit.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_barcode_bundled.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_common.** { *; }
+-keep class com.google.android.libraries.barhopper.** { *; }
+-keep class com.google.photos.vision.barhopper.** { *; }
+-keep class com.google.android.gms.tasks.** { *; }
+-dontwarn com.google.mlkit.**
